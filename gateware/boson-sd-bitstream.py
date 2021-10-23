@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# This file is Copyright (c) 2021 Gregory Davill <greg.davill@gmail.com>
+# This file is Copyright (c) 2020 Gregory Davill <greg.davill@gmail.com>
 # License: BSD
 
 # This variable defines all the external programs that this module
@@ -12,381 +12,256 @@ LX_DEPENDENCIES = ["riscv", "nextpnr-ecp5", "yosys"]
 # Import lxbuildenv to integrate the deps/ directory
 import lxbuildenv
 
+import sys
 import argparse
+import optparse
 import subprocess
 import os
+import shutil
 
 from migen import *
 
-from rtl.platform import butterstick_r1d0
-
-
+from rtl.platform import boson_frame_grabber_r0d3
 
 from migen.genlib.resetsync import AsyncResetSynchronizer
 from litex.build.generic_platform import *
 from litex.soc.cores.clock import *
 from rtl.ecp5_dynamic_pll import ECP5PLL, period_ns
 from litex.soc.integration.soc_core import *
-from litex.soc.integration.soc import SoCRegion
+from litex.soc.integration.soc import SoC, SoCRegion
 from litex.soc.integration.builder import *
 
 from litex.soc.cores.bitbang import I2CMaster
+from litex.soc.cores.gpio import GPIOOut, GPIOIn
 
-from litex.soc.interconnect.stream import StrideConverter, SyncFIFO
+from litex.soc.interconnect import stream, wishbone
+from litex.soc.interconnect.wishbone import Interface, Crossbar
 from litex.soc.interconnect.csr import *
-
 
 from litex.soc.cores.led import LedChaser
 
-from liteeth.core import LiteEthMAC
-from liteeth.phy.ecp5rgmii import LiteEthPHYRGMII
+from migen.genlib.misc import timeline
+from migen.genlib.cdc import MultiReg, PulseSynchronizer
 
-from litedram.modules import MT41K256M16
-from litedram.phy import ECP5DDRPHY
-from litedram.frontend.dma import LiteDRAMDMAReader
+from rtl.prbs import PRBSStream
+from rtl.wb_streamer import StreamReader, StreamWriter, StreamBuffers
+from rtl.reboot import Reboot
+from rtl.buttons import Button
+from rtl.streamable_hyperram import StreamableHyperRAM
 
-from rtl.video.DMACapture import DMAVideoCapture
-from litex.soc.interconnect.packet import Packetizer
+from rtl.video.terminal import Terminal
+from rtl.video.boson import Boson
+from rtl.video.YCrCb import YCbCr2RGB, YCbCr422to444, ycbcr444_layout
 
+from rtl.video.simulated_video import SimulatedVideo
+from rtl.video.video_debug import VideoDebug
+from rtl.video.video_stream import VideoStream
+from rtl.video.framer import Framer, framer_params
+from rtl.video.scaler import Scaler
 
-class idxCSR(Module, AutoCSR):
-    def __init__(self):       
-        # CSR control
-        self.value = CSRStorage(16)
-        self.level = CSRStorage(16)
+from rtl.cdc_csr import CSRClockDomainWrapper
 
+from rtl.hdmi import HDMI
+from rtl.video.ppu import VideoCore
 
 
 class _CRG(Module, AutoCSR):
+
     def __init__(self, platform, sys_clk_freq):
-        self.clock_domains.cd_init     = ClockDomain()
-        self.clock_domains.cd_por      = ClockDomain(reset_less=True)
-        self.clock_domains.cd_sys      = ClockDomain()
-        self.clock_domains.cd_sys2x    = ClockDomain()
-        self.clock_domains.cd_sys2x_i  = ClockDomain(reset_less=True)
-        self.clock_domains.cd_sys2x_eb = ClockDomain(reset_less=True)
+        self.clock_domains.cd_sys = ClockDomain()
+        self.clock_domains.cd_sdclk = ClockDomain()
+
+        self.clock_domains.cd_hr = ClockDomain()
+        self.clock_domains.cd_hr_90 = ClockDomain()
+        self.clock_domains.cd_hr2x = ClockDomain()
+        self.clock_domains.cd_hr2x_90 = ClockDomain()
+
+        self.clock_domains.cd_init = ClockDomain()
 
         # # #
 
-        self.stop  = Signal()
-        self.reset = Signal()
+        # clk / rst
+        clk48 = platform.request("clk48")
 
-        # Clk / Rst
-        clk30 = platform.request("clk30")
-        rst_n = platform.request("user_btn")
-        platform.add_period_constraint(clk30, period_ns(30e6))
-
-        # Power on reset
-        por_count = Signal(16, reset=2**16-1)
-        por_done  = Signal()
-        self.comb += self.cd_por.clk.eq(clk30)
-        self.comb += por_done.eq(por_count == 0)
-        self.sync.por += If(~por_done, por_count.eq(por_count - 1))
-
-        # PLL
-        sys2x_clk_ecsout = Signal()
         self.submodules.pll = pll = ECP5PLL()
-        self.comb += pll.reset.eq(~por_done | ~rst_n)
-        pll.register_clkin(clk30, 30e6)
-        pll.create_clkout(self.cd_sys2x_i, 2*sys_clk_freq)
-        pll.create_clkout(self.cd_init, 15e6)
-        self.specials += [
-            Instance("ECLKBRIDGECS",
-                i_CLK0   = self.cd_sys2x_i.clk,
-                i_SEL    = 0,
-                o_ECSOUT = sys2x_clk_ecsout),
-            Instance("ECLKSYNCB",
-                i_ECLKI = sys2x_clk_ecsout,
-                i_STOP  = self.stop,
-                o_ECLKO = self.cd_sys2x.clk),
-            Instance("CLKDIVF",
-                p_DIV     = "2.0",
-                i_ALIGNWD = 0,
-                i_CLKI    = self.cd_sys2x.clk,
-                i_RST     = self.reset,
-                o_CDIVX   = self.cd_sys.clk),
-            AsyncResetSynchronizer(self.cd_sys,   ~pll.locked | self.reset),
-            AsyncResetSynchronizer(self.cd_sys2x, ~pll.locked | self.reset),
-        ]
-       
+        pll.register_clkin(clk48, 48e6)
+        pll.create_clkout(self.cd_hr2x, sys_clk_freq * 2, margin=0)
+        pll.create_clkout(self.cd_hr2x_90, sys_clk_freq * 2, phase=1, margin=0)  # SW tunes this phase during init
 
-from litex.soc.interconnect.packet import Header, HeaderField
-from litex.soc.interconnect.stream import EndpointDescription
+        self.comb += self.cd_init.clk.eq(clk48)
 
-ipv4_header_length = 20 + 8 + 2
-ipv4_header_fields = {
-    #"target_mac":    HeaderField(0,  0, 48),
-    #"sender_mac":    HeaderField(6,  0, 48),
-    #"ethernet_type": HeaderField(12, 0, 16),
-    
-    "ihl":            HeaderField(0,  0,  4),
-    "version":        HeaderField(0,  4,  4),
-    "total_length":   HeaderField(2,  0, 16),
-    "identification": HeaderField(4,  0, 16),
-    "ttl":            HeaderField(8,  0,  8),
-    "protocol":       HeaderField(9,  0,  8),
-    "checksum":       HeaderField(10, 0, 16),
-    "sender_ip":      HeaderField(12, 0, 32),
-    "target_ip":      HeaderField(16, 0, 32),
-    
-    "src_port":     HeaderField(20+0, 0, 16),
-    "dst_port":     HeaderField(20+2, 0, 16),
-    "length":       HeaderField(20+4, 0, 16),
-    "udp_checksum": HeaderField(20+6, 0, 16),
-    "idx": HeaderField(20+8, 0, 16),
-    
-}
-udp_header = Header(ipv4_header_fields, ipv4_header_length, swap_field_bytes=True)
+        sd_clk = 100e6
 
+        self.submodules.video_pll = video_pll = ECP5PLL()
+        video_pll.register_clkin(clk48, 48e6)
+        video_pll.create_clkout(self.cd_sdclk, sd_clk, margin=0)
 
-def ip_udp_description(dw):
-    param_layout = udp_header.get_layout()
-    payload_layout = [
-        ("data",     dw),
-        ("last_be",  dw//8)
-    ]
-    return EndpointDescription(payload_layout, param_layout)
-
-class ethSoC(SoCCore):
-    csr_map = {
-        "rgb"        :  10, 
-        "crg"        :  11, 
-        "ethmac"     :  12,
-        "ethphy"     :  13,
-        "boson"      :  14,
-        "i2c"        :  15,
-        "res_detect":  16,
-        "frame_extract":  17,
-        "video_latch"         : 19,
-        "dma0"        :  18,
-        "dma1"        :  20,
-        "csr_idx"       : 21,
         
-    }
+
+        self.comb += self.cd_sys.clk.eq(self.cd_hr.clk)
+
+        platform.add_period_constraint(self.cd_sys.clk, period_ns(sys_clk_freq))
+        platform.add_period_constraint(clk48, period_ns(48e6))
+        platform.add_period_constraint(self.cd_video.clk, period_ns(pixel_clk))
+        platform.add_period_constraint(self.cd_video_shift.clk, period_ns(pixel_clk * 5))
+
+        self._slip_hr2x = CSRStorage()
+        self._slip_hr2x90 = CSRStorage()
+
+        # ECLK stuff
+        self.specials += [
+            Instance("CLKDIVF",
+                     p_DIV="2.0",
+                     i_ALIGNWD=self._slip_hr2x.storage,
+                     i_CLKI=self.cd_hr2x.clk,
+                     i_RST=~pll.locked,
+                     o_CDIVX=self.cd_hr.clk),
+            Instance("CLKDIVF",
+                     p_DIV="2.0",
+                     i_ALIGNWD=self._slip_hr2x90.storage,
+                     i_CLKI=self.cd_hr2x_90.clk,
+                     i_RST=~pll.locked,
+                     o_CDIVX=self.cd_hr_90.clk),
+            AsyncResetSynchronizer(self.cd_hr2x, ~pll.locked),
+            AsyncResetSynchronizer(self.cd_hr, ~pll.locked),
+            AsyncResetSynchronizer(self.cd_sys, ~pll.locked),
+        ]
+
+        self._phase_sel = CSRStorage(2)
+        self._phase_dir = CSRStorage()
+        self._phase_step = CSRStorage()
+        self._phase_load = CSRStorage()
+
+        self.comb += [
+            self.pll.phase_sel.eq(self._phase_sel.storage),
+            self.pll.phase_dir.eq(self._phase_dir.storage),
+            self.pll.phase_step.eq(self._phase_step.storage),
+            self.pll.phase_load.eq(self._phase_load.storage),
+        ]
+
+
+class Boson_SoC(SoCCore):
+    csr_map = {}
     csr_map.update(SoCCore.csr_map)
 
-    mem_map = { 
-        "ethmac"    : 0x81000000,
+    mem_map = {
+        **SoCCore.mem_map,
+        **{
+            "sram": 0x10000000,
+            "csr": 0xf0000000,
+            "vexriscv_debug": 0xf00f0000,
+            "hyperram": 0x20000000,
+            "spiflash": 0x30000000,
+        },
     }
-    mem_map.update(SoCCore.mem_map)
 
-    interrupt_map = {
-        "ethmac"   : 2,
-    }
+    interrupt_map = {}
     interrupt_map.update(SoCCore.interrupt_map)
 
     def __init__(self):
-        
-        self.platform = platform = butterstick_r1d0.ButterStickPlatform()
-        platform.add_extension(butterstick_r1d0._uart_debug)
-        platform.add_extension(butterstick_r1d0._i2c)
-        platform.add_extension(butterstick_r1d0._syzygy_boson)
-        
-        ethernet = True
-        sdram = True
 
-        # crg
-        platform.sys_clk_freq = sys_clk_freq = 60e6
+        self.platform = platform = bosonHDMI_r0d3.Platform()
+
+        sys_clk_freq = 82.5e6
+        SoCCore.__init__(
+            self,
+            platform,
+            clk_freq=sys_clk_freq,
+            cpu_type='vexriscv',
+            cpu_variant='standard',
+            with_uart=False,
+            csr_data_width=32,
+            ident_version=False,
+            wishbone_timeout_cycles=128,
+            integrated_sram_size=32 * 1024,
+            cpu_reset_address=self.mem_map['sram'],
+        )
+
+        # Toolchain config
+        platform.toolchain.build_template[0] = "yosys -q -l {build_name}.rpt {build_name}.ys"
+        platform.toolchain.build_template[1] += f" --log {platform.name}-nextpnr.log --router router1"
+        platform.toolchain.build_template[1] += f" --report {platform.name}-timing.json"
+        platform.toolchain.yosys_template[-1] += ' -abc2 '  # abc2/nowidelut generally give higher freq
+
+        # crg -------------------------------------------------------------------------------------
         self.submodules.crg = _CRG(platform, sys_clk_freq)
-        
-        SoCCore.__init__(self, platform, clk_freq=sys_clk_freq,
-                          cpu_type='vexriscv', with_uart=True, # uart_name='stream',
-                          csr_data_width=32,
-                          ident="Boson Ethernet SoC", ident_version=True, wishbone_timeout_cycles=128,
-                          integrated_rom_size=64*1024, 
-                          integrated_sram_size=16*1024)
 
-        self.submodules.i2c = I2CMaster(platform.request("i2c"))
-
-        if sdram:
-            ddram_pads = platform.request("ddram")
-            self.submodules.ddrphy = ECP5DDRPHY(
-                pads         = ddram_pads,
-                sys_clk_freq = sys_clk_freq,
-                #dm_remapping = {0:1, 1:0}
-                )
-            self.ddrphy.settings.rtt_nom = "disabled"
-            self.add_csr("ddrphy")
-            if hasattr(ddram_pads, "vccio"):
-                self.comb += ddram_pads.vccio.eq(0b111111)
-            if hasattr(ddram_pads, "gnd"):
-                self.comb += ddram_pads.gnd.eq(0)
-            self.comb += self.crg.stop.eq(self.ddrphy.init.stop)
-            self.comb += self.crg.reset.eq(self.ddrphy.init.reset)
-            self.add_sdram("sdram",
-                phy                     = self.ddrphy,
-                module                  = MT41K256M16(sys_clk_freq, "1:2"),
-                origin                  = self.mem_map["main_ram"],
-                size                    = 0x80000000,
-                l2_cache_size           = 8192,
-                l2_cache_min_data_width = 128,
-                l2_cache_reverse        = True
-            )
-            
-            
-            self.submodules.dma0 = dma0 = DMAVideoCapture(platform, self.sdram.crossbar.get_port())
-            self.submodules.dma1 = dma1 = LiteDRAMDMAReader(self.sdram.crossbar.get_port(), with_csr=True)
-        
-
-
-        self.platform.toolchain.build_template[0] = "yosys -q -l {build_name}.rpt {build_name}.ys"
-        self.platform.toolchain.build_template[1] += f" --router router1"
-
-        # Blue LEDs only
-        led = platform.request("led")
-        self.comb += led.c.eq(2)
-
-        # ButterStick r1.0 requires 
-        # VccIO set on port 2 before ULPI signals work.
-        vccio_pins = platform.request("vccio_ctrl")
-        pwm_timer = Signal(14)
-        self.sync += pwm_timer.eq(pwm_timer + 1)
-        self.comb += [
-            vccio_pins.pdm[0].eq(pwm_timer < int(2**14 * (0.70))),  # 1.8v
-            vccio_pins.pdm[1].eq(pwm_timer < int(2**14 * (0.15))),  # 3.3v
-            vccio_pins.pdm[2].eq(pwm_timer < int(2**14 * (0.15))), # 3.3v
-        ]
-
-        counter = Signal(32)
-        self.sync += [
-            counter.eq(counter + 1),
-            If(counter[21] == 1,
-                vccio_pins.en.eq(1),
-            )
-        ]
-        
-        if ethernet:
-            # ethernet mac/udp/ip stack
-            self.submodules.ethphy = ethphy = LiteEthPHYRGMII(platform.request("eth_clk"),
-                            platform.request("eth"))
-
-            
-            platform.add_period_constraint(ClockSignal('eth_rx'), period_ns(125e6))
-            platform.add_period_constraint(ClockSignal('eth_tx'), period_ns(125e6))
-
-            # MAC
-            self.submodules.ethmac = ethmac = LiteEthMAC(
-                phy        = ethphy,
-                dw         = 32,
-                interface  = "hybrid",
-                endianness = self.cpu.endianness,
-                hw_mac=None)
-            
-            ethmac_region = SoCRegion(origin=self.mem_map.get("ethmac", None), size=0x2000, cached=False)
-            self.bus.add_slave(name="ethmac", slave=ethmac.bus, region=ethmac_region)
-
-            if hasattr(ethmac, "crossbar"):
-                port = ethmac.crossbar.get_port(0, dw=32)
-
-                #from eth_packet_streamer import EthPacketStreamer
-                #self.submodules.eps = eps = EthPacketStreamer()
-
-                sc = StrideConverter([('data', len(dma1.source.data))], [('data', 32)], reverse=True)
-                self.submodules += sc
-
-                self.submodules.fifo0 = fifo = SyncFIFO([('data', 32)], 512)
-
-                self.submodules.packet = p = Packetizer(ip_udp_description(32), [('data', 32), ('last_be', 4)], udp_header)       
-
-
-                self.submodules.csr_idx = idxCSR()
-
-                en = Signal()
-
-                self.comb += [
-                    dma1.source.connect(sc.sink),
-                    sc.source.connect(fifo.sink),
-
-                    fifo.source.connect(p.sink, omit={"valid", "ready"}),
-
-                    p.sink.valid.eq(fifo.source.valid & en),
-                    fifo.source.ready.eq(p.sink.ready & en),
-
-                    p.source.connect(port.sink),
-
-                    port.sink.target_mac.eq(0xa0cec8d5873d),
-                    port.sink.sender_mac.eq(0x10e2d5000001),
-                    port.sink.ethernet_type.eq(0x0800),
-                    p.sink.ihl.eq(5),
-                    p.sink.version.eq(4),
-                    p.sink.total_length.eq(1306),
-                    p.sink.identification.eq(0),
-                    p.sink.ttl.eq(64),
-                    p.sink.protocol.eq(17),
-                    p.sink.checksum.eq(0xf1ec),
-                    p.sink.sender_ip.eq(0xc0a80132),
-                    p.sink.target_ip.eq(0xc0a80164),
-
-                    p.sink.src_port.eq(32765),
-                    p.sink.dst_port.eq(9001),
-                    p.sink.length.eq(1286),
-                    p.sink.udp_checksum.eq(0),
-                    p.sink.idx.eq(self.csr_idx.value.storage),
-
-                    
-                    #eps.source.connect(port.sink),
-                    # Add dummy RX path
-                    port.source.ready.eq(1),
-                ]
-
-                self.sync += [
-                    If(~en,
-                        If(fifo.level >= self.csr_idx.level.storage,
-                            en.eq(1),
-                        )
-                    ).Elif(fifo.level == 0,
-                        en.eq(0),
-                    )
-                ]
-
-                self.comb += [
-                    If(en & (fifo.level == 1),
-                        p.sink.last.eq(1),
-                        p.sink.last_be.eq(0b1000),
-                    )
-                ]
-    
+        # Timers -----------------------------------------------------------------------------------
+        self.add_timer(name="timer1")
+        self.add_timer(name="timer2")
 
         # Leds -------------------------------------------------------------------------------------
-        self.submodules.leds = LedChaser(
-            pads         = platform.request_all("user_led"),
-            sys_clk_freq = sys_clk_freq)
-        self.add_csr("leds")
+        _led_pins = platform.request_all("user_led")
+        led_pins = Signal(len(_led_pins))
+        self.comb += _led_pins.eq(~led_pins)
+        self.submodules.leds = LedChaser(pads=led_pins, sys_clk_freq=sys_clk_freq)
 
+        # SPI Flash --------------------------------------------------------------------------------
+        self.add_spi_flash(mode="4x", dummy_cycles=6)
+        self.add_constant("SPIFLASH_PAGE_SIZE", 256)
+        self.add_constant("SPIFLASH_SECTOR_SIZE", 4096)
 
-        # Add git version into firmware 
+        # HyperRAM with DMAs -----------------------------------------------------------------------
+        self.submodules.writer = writer = StreamWriter()
+        self.submodules.reader = reader = StreamReader()
+        self.submodules.hyperram = hyperram = StreamableHyperRAM(platform.request("hyperRAM"), devices=[reader, writer])
+        self.register_mem("hyperram", self.mem_map['hyperram'], hyperram.bus, size=0x800000)
+
+        # Attach a StreamBuffer module to handle buffering of frames
+        self.submodules.buffers = buffers = StreamBuffers()
+        self.comb += [
+            buffers.rx_release.eq(reader.evt_done),
+            reader.start_address.eq(buffers.rx_buffer),
+            writer.start_address.eq(buffers.tx_buffer),
+        ]
+
+        # PRBS Tester, used to test HyperRAM DMAs --------------------------------------------------
+        self.submodules.prbs = PRBSStream()
+        reader.add_source(self.prbs.source.source, "prbs")
+        writer.add_sink(self.prbs.sink.sink, "prbs")
+
+        # Add git version into firmware
         def get_git_revision():
             try:
                 r = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"],
-                        stderr=subprocess.DEVNULL)[:-1].decode("utf-8")
+                                            stderr=subprocess.DEVNULL)[:-1].decode("utf-8")
             except:
                 r = "--------"
             return r
-        self.add_constant("FW_GIT_SHA1", get_git_revision())
+
+        self.add_constant("DIVA_GIT_SHA1", get_git_revision())
 
     def do_exit(self, vns):
         if hasattr(self, "analyzer"):
             self.analyzer.export_csv(vns, "test/analyzer.csv")
 
+    def PackageFirmware(self, builder):
+        # Remove un-needed sw packages
+        builder.software_packages = []
+        builder.add_software_package("libcompiler_rt")
+        builder.add_software_package("libbase")
 
-    def PackageFirmware(self, builder):  
-        self.finalize()
-
-        os.makedirs(builder.output_dir, exist_ok=True)
-
-        builder.add_software_package("uip", "{}/../firmware/uip".format(os.getcwd()))
         builder.add_software_package("main-fw", "{}/../firmware/main-fw".format(os.getcwd()))
 
         builder._prepare_rom_software()
         builder._generate_includes()
         builder._generate_rom_software(compile_bios=False)
-        
-        firmware_file = os.path.join(builder.output_dir, "software", "main-fw","main-fw.bin")
-        firmware_data = get_mem_data(firmware_file, self.cpu.endianness)
-        self.initialize_rom(firmware_data)
 
         # lock out compiling firmware during build steps
         builder.compile_software = False
+
+    def PackageBooter(self, builder):
+        self.finalize()
+
+        os.makedirs(builder.output_dir, exist_ok=True)
+
+        # Remove un-needed sw packages
+        builder.software_packages = []
+        builder.add_software_package("booter", "{}/../firmware/booter".format(os.getcwd()))
+
+        builder._prepare_rom_software()
+        builder._generate_includes()
+        builder._generate_rom_software(compile_bios=False)
 
 
 def CreateFirmwareInit(init, output_file):
@@ -394,77 +269,102 @@ def CreateFirmwareInit(init, output_file):
     for d in init:
         content += "{:08x}\n".format(d)
     with open(output_file, "w") as o:
-        o.write(content)    
-     
+        o.write(content)
+
+
 def main():
-    parser = argparse.ArgumentParser(
-        description="Build DiVA Gateware")
-    parser.add_argument(
-        "--update-firmware", default=False, action='store_true',
-        help="compile firmware and update existing gateware"
-    )
+    parser = argparse.ArgumentParser(description="Build DiVA Gateware")
+    parser.add_argument("--update-firmware",
+                        default=False,
+                        action='store_true',
+                        help="compile firmware and update existing gateware")
     args = parser.parse_args()
 
-    soc = ethSoC()
+    soc = DiVA_SoC()
     builder = Builder(soc, output_dir="build", csr_csv="build/csr.csv")
-
-
-    # Build firmware
-    soc.PackageFirmware(builder)
-        
 
     # Check if we have the correct files
     firmware_file = os.path.join(builder.output_dir, "software", "main-fw", "main-fw.bin")
-    firmware_data = get_mem_data(firmware_file, soc.cpu.endianness)
-    firmware_init = os.path.join(builder.output_dir, "software", "main-fw", "main-fw.init")
-    CreateFirmwareInit(firmware_data, firmware_init)
-    
-    rand_rom = os.path.join(builder.output_dir, "gateware", "rand.data")
-    
-    input_config = os.path.join(builder.output_dir, "gateware", f"{soc.platform.name}.config")
-    output_config = os.path.join(builder.output_dir, "gateware", f"{soc.platform.name}_patched.config")
-    
-    # If we don't have a random file, create one, and recompile gateware
-    if (os.path.exists(rand_rom) == False) or (args.update_firmware == False):
-        os.makedirs(os.path.join(builder.output_dir,'gateware'), exist_ok=True)
-        os.makedirs(os.path.join(builder.output_dir,'software'), exist_ok=True)
 
-        os.system(f"ecpbram  --generate {rand_rom} --seed {0} --width {32} --depth {soc.integrated_rom_size // 4}")
+    rand_rom = os.path.join(builder.output_dir, "gateware", "rand.data")
+
+    input_config = os.path.join(builder.output_dir, "gateware", f"{soc.platform.name}.config")
+
+    # Create 256bytes rand fill for BRAM
+    if (os.path.exists(rand_rom) == False) or (args.update_firmware == False):
+        os.makedirs(os.path.join(builder.output_dir, 'software'), exist_ok=True)
+        os.makedirs(os.path.join(builder.output_dir, 'gateware'), exist_ok=True)
+        os.system(f"ecpbram  --generate {rand_rom} --seed {0} --width {32} --depth {2048 // 4}")
 
         # patch random file into BRAM
         data = []
         with open(rand_rom, 'r') as inp:
             for d in inp.readlines():
                 data += [int(d, 16)]
-        soc.initialize_rom(data)
+        soc.sram.mem.init = data
 
         # Build gateware
         vns = builder.build(nowidelut=False)
-        soc.do_exit(vns)    
-
-
-    # Insert Firmware into Gateware
-    os.system(f"ecpbram  --input {input_config} --output {output_config} --from {rand_rom} --to {firmware_init}")
+        soc.do_exit(vns)
 
     # create a compressed bitstream
-    output_bit = os.path.join(builder.output_dir, "gateware", "boson-eth.dfu")
-    os.system(f"ecppack --freq 38.8 --compress --input {output_config} --bit {output_bit}")
+    output_bit = os.path.join(builder.output_dir, "gateware", "diva.bit")
+    os.system(f"ecppack --freq 38.8 --compress --input {input_config} --bit {output_bit}")
+
+    # Determine Bitstream size
+    stage_1_filesize = os.path.getsize(output_bit)
+    gateware_offset = 0x00040000
+    firmware_offset = (stage_1_filesize + 0x200) & ~(0x100 - 1)  # Add some fudge factor.
+    firmware_offset += gateware_offset  # bitstream offset
+    print(f"Compressed file size: 0x{stage_1_filesize:0x}")
+    print(f"Placing firmware at: 0x{firmware_offset:0x}")
+
+    # Finalise the gateware aspects of the design.
+    # Alter the spiflash origin so that our actual address is valid in the linker when compiling
+    # Compile booter, it makes use of SPIFLASH_BASE for the boot address
+    soc.finalize()
+    soc.mem_regions['spiflash'].origin += firmware_offset
+    soc.PackageBooter(builder)
+
+    booter_file = "{}/software/booter/booter.bin".format(builder.output_dir)
+    booter_init = "{}/software/booter/booter.init".format(builder.output_dir)
+    CreateFirmwareInit(get_mem_data(booter_file, soc.cpu.endianness), booter_init)
+
+    # Insert Firmware into Gateware
+    os.system(f"ecpbram  --input {input_config} --output {input_config} --from {rand_rom} --to {booter_init}")
+
+    # create a compressed bitstream
+    output_dfu = os.path.join(builder.output_dir, "gateware", "boson-sd.dfu")
+    os.system(f"ecppack --freq 38.8 --compress --input {input_config} --bit {output_bit}")
+
+    # Due to bitstream compression the final size might change when we patch in the booter firmware.
+    stage_2_filesize = os.path.getsize(output_bit)
+    assert firmware_offset > stage_2_filesize  # Sanity check that our bitstream didn't change too much.
+    print(f"Compressed file size: 0x{stage_2_filesize:0x}")
+
+    # Build firmware
+    soc.PackageFirmware(builder)
+
+    # Combine FLASH firmware
+    from util.combine import CombineBinaryFiles
+    flash_regions_final = {
+        "build/gateware/diva.bit": gateware_offset,  # SoC ECP5 Bitstream
+        "build/software/main-fw/main-fw.bin": firmware_offset,  # Circuit PYthon
+    }
+    CombineBinaryFiles(flash_regions_final, output_dfu)
 
     # Add DFU suffix
-    os.system(f"dfu-suffix -p 16d0 -d 0fad -a {output_bit}")
+    os.system(f"dfu-suffix -p 16d0 -d 0fad -a {output_dfu}")
 
-    print(
-    f"""Boson Ethernet build complete!  Output files:
+    print(f"""Boson SD build complete!  
     
-    Bitstream file. (Compressed, Higher CLK)  Load this into FLASH.
-        {builder.output_dir}/gateware/boson-eth.dfu
+  boson-sd.dfu size={os.path.getsize(output_dfu) / 1024 :.2f}KB ({os.path.getsize(output_dfu)} bytes) 
+    FLASH Usage: {(float)(os.path.getsize(output_dfu)) / (((1024*1024) - gateware_offset)/100) :.2f} %
+    
+    
+  Load using `dfu-util -D boson-sd.dfu`
     """)
-
 
 
 if __name__ == "__main__":
     main()
-
-
-
-
