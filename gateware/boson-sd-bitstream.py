@@ -45,24 +45,9 @@ from migen.genlib.cdc import MultiReg, PulseSynchronizer
 
 from rtl.prbs import PRBSStream
 from rtl.wb_streamer import StreamReader, StreamWriter, StreamBuffers
-from rtl.reboot import Reboot
-from rtl.buttons import Button
 from rtl.streamable_hyperram import StreamableHyperRAM
 
-from rtl.video.terminal import Terminal
 from rtl.video.boson import Boson
-from rtl.video.YCrCb import YCbCr2RGB, YCbCr422to444, ycbcr444_layout
-
-from rtl.video.simulated_video import SimulatedVideo
-from rtl.video.video_debug import VideoDebug
-from rtl.video.video_stream import VideoStream
-from rtl.video.framer import Framer, framer_params
-from rtl.video.scaler import Scaler
-
-from rtl.cdc_csr import CSRClockDomainWrapper
-
-from rtl.hdmi import HDMI
-from rtl.video.ppu import VideoCore
 
 
 class _CRG(Module, AutoCSR):
@@ -81,29 +66,26 @@ class _CRG(Module, AutoCSR):
         # # #
 
         # clk / rst
-        clk48 = platform.request("clk48")
+        clk24 = platform.request("clk24")
 
         self.submodules.pll = pll = ECP5PLL()
-        pll.register_clkin(clk48, 48e6)
+        pll.register_clkin(clk24, 24e6)
         pll.create_clkout(self.cd_hr2x, sys_clk_freq * 2, margin=0)
         pll.create_clkout(self.cd_hr2x_90, sys_clk_freq * 2, phase=1, margin=0)  # SW tunes this phase during init
 
-        self.comb += self.cd_init.clk.eq(clk48)
+        self.comb += self.cd_init.clk.eq(clk24)
 
         sd_clk = 100e6
 
         self.submodules.video_pll = video_pll = ECP5PLL()
-        video_pll.register_clkin(clk48, 48e6)
+        video_pll.register_clkin(clk24, 24e6)
         video_pll.create_clkout(self.cd_sdclk, sd_clk, margin=0)
 
         
 
         self.comb += self.cd_sys.clk.eq(self.cd_hr.clk)
 
-        platform.add_period_constraint(self.cd_sys.clk, period_ns(sys_clk_freq))
-        platform.add_period_constraint(clk48, period_ns(48e6))
-        platform.add_period_constraint(self.cd_video.clk, period_ns(pixel_clk))
-        platform.add_period_constraint(self.cd_video_shift.clk, period_ns(pixel_clk * 5))
+        platform.add_period_constraint(clk24, period_ns(24e6))
 
         self._slip_hr2x = CSRStorage()
         self._slip_hr2x90 = CSRStorage()
@@ -160,7 +142,7 @@ class Boson_SoC(SoCCore):
 
     def __init__(self):
 
-        self.platform = platform = bosonHDMI_r0d3.Platform()
+        self.platform = platform = boson_frame_grabber_r0d3.Platform()
 
         sys_clk_freq = 82.5e6
         SoCCore.__init__(
@@ -197,14 +179,18 @@ class Boson_SoC(SoCCore):
         self.submodules.leds = LedChaser(pads=led_pins, sys_clk_freq=sys_clk_freq)
 
         # SPI Flash --------------------------------------------------------------------------------
-        self.add_spi_flash(mode="4x", dummy_cycles=6)
-        self.add_constant("SPIFLASH_PAGE_SIZE", 256)
-        self.add_constant("SPIFLASH_SECTOR_SIZE", 4096)
+        from litespi.modules import W25Q128JV
+        from litespi.opcodes import SpiNorFlashOpCodes as Codes
+        self.add_spi_flash(mode="4x", module=W25Q128JV(Codes.READ_1_1_4), with_master=False)
+
+        # SDMMC ------------------------------------------------------------------------------------
+        self.add_sdcard(name="sdmmc", mode="read+write", use_emulator=False, software_debug=True)
+    
 
         # HyperRAM with DMAs -----------------------------------------------------------------------
         self.submodules.writer = writer = StreamWriter()
         self.submodules.reader = reader = StreamReader()
-        self.submodules.hyperram = hyperram = StreamableHyperRAM(platform.request("hyperRAM"), devices=[reader, writer])
+        self.submodules.hyperram = hyperram = StreamableHyperRAM(platform.request("hyper_ram"), devices=[reader, writer])
         self.register_mem("hyperram", self.mem_map['hyperram'], hyperram.bus, size=0x800000)
 
         # Attach a StreamBuffer module to handle buffering of frames
@@ -280,7 +266,7 @@ def main():
                         help="compile firmware and update existing gateware")
     args = parser.parse_args()
 
-    soc = DiVA_SoC()
+    soc = Boson_SoC()
     builder = Builder(soc, output_dir="build", csr_csv="build/csr.csv")
 
     # Check if we have the correct files
