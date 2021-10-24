@@ -5,9 +5,10 @@ include $(SOC_DIRECTORY)/software/common.mak
 
 CFLAGS += -I$(SOC_DIRECTORY)/software/include 
 
-OBJECTS=main.o \
-		spi.o \
-		crt0.o
+OBJECTS=crt0.o \
+		main.o \
+		spi.o
+		
 
 vpath %.ld $(BOOTER_DIRECTORY)
 vpath %.c $(BOOTER_DIRECTORY)

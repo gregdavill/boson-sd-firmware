@@ -9,9 +9,11 @@
 
 
 void spiBegin(void) {
-	spiflash_core_master_phyconfig_len_write(8);
-	spiflash_core_master_phyconfig_width_write(1);
-	spiflash_core_master_phyconfig_mask_write(1);
+	spiflash_core_master_phyconfig_write(
+		  (8 << CSR_SPIFLASH_CORE_MASTER_PHYCONFIG_LEN_OFFSET) 
+		| (1 << CSR_SPIFLASH_CORE_MASTER_PHYCONFIG_WIDTH_OFFSET) 
+		| (1 << CSR_SPIFLASH_CORE_MASTER_PHYCONFIG_MASK_OFFSET));
+
 	spiflash_core_master_cs_write(1);
 }
 
@@ -19,16 +21,15 @@ void spiEnd(void) {
 	spiflash_core_master_cs_write(0);
 }
 
+	
 static uint8_t spi_single_xfer(uint8_t b) {
-	// wait for tx ready
-	while(!spiflash_core_master_status_tx_ready_read()){}
-	
+	/* Be sure to empty RX queue before doing Xfer. */
+	while (spiflash_core_master_status_rx_ready_read())
+		spiflash_core_master_rxtx_read();
 
+	/* Do Xfer. */
 	spiflash_core_master_rxtx_write(b);
-
-	//wait for rx ready
-	while(!spiflash_core_master_status_rx_ready_read()){}
-	
+	while (!spiflash_core_master_status_rx_ready_read());
 
 	return spiflash_core_master_rxtx_read();
 }
@@ -89,6 +90,10 @@ uint8_t spiReset(void) {
 }
 
 int spiInit(void) {
+	
+	/* Many of the MX25R1635F's config commands only run upto 33MHz. So div=2 ensures we're around the 20MHz range. */
+	spiflash_phy_clk_divisor_write(2);
+	
 	// Reset the SPI flash, which will return it to SPI mode even
 	// if it's in QPI mode, and ensure the chip is accepting commands.
 	spiReset();
@@ -103,30 +108,25 @@ void spiSetQE(void){
 	// Check for supported FLASH ID
 	uint32_t id = spiId();
 
-    if(id == 0x1f138501){
-        // Set QE bit on AT25SF081 if not set
+	/* MX25R1635F */
+    if(id == 0xc2152815){
+        // Set QE bit if not set
         
 		// READ status register
         uint8_t status1 = spi_read_status();
 
-		spiBegin();
-		spi_single_xfer(0x35);
-		uint8_t status2 = spi_single_xfer(0);
-		spiEnd();
-        
 		// Check Quad Enable bit
-        if((status2 & 0x02) == 0){
+        if((status1 & 0x40) == 0){
             // Enable Write-Enable Latch (WEL)
             spiBegin();
             spi_single_xfer(0x06);
             spiEnd();
 
             // Write back status1 and status2 with QE bit set
-            status2 |= 0x02;
+            status1 |= 0x40;
             spiBegin();
             spi_single_xfer(0x01);
             spi_single_xfer(status1);
-            spi_single_xfer(status2);
             spiEnd();
             
             // loop while write in progress set

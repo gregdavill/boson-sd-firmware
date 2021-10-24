@@ -5,6 +5,7 @@
   Very simple crt0. We don't care about interrupts,bss,data regions. 
   Just set the stack pointer and hop over to main.
 */
+.section .text.start
 
 _start:
 crt_init:

@@ -10,8 +10,11 @@
    Given we never return from this we can skip these. */
 __attribute__((naked)) int main(int i, char **c)
 {	
-  /* Set LED to Yellow */
-	leds_out_write(3);
+
+  io_oe_out_write(0b01);
+
+  /* Set LED to ON */
+	leds_out_write(1);
 
   /* Switch to bitbang mode and poll SPI-ID then configure for Quad Mode */
   spiInit();
@@ -20,13 +23,15 @@ __attribute__((naked)) int main(int i, char **c)
   /* Switch back to Memory mapped operation, now operating with Quad-IO */
   spiFree();
 
-  /* Set LED to GREEN */
-	leds_out_write(1);
+  /* Set LED to OFF */
+	leds_out_write(0);
 
 
   /* Perform a jump directly to our firmware located in the memory mapped SPIFLASH 
    * Note we configure SPI_BASE as the origin point of our firmware.
    * In reality it's actually located at an offset to skip over the bootloader and gateware.
+   * 
+   * Note 'SPIFLASH_BASE' is re-defined in boson-sd-bitstream before we compile this source.
    */
   void (*app)(void) = (void (*)(void))SPIFLASH_BASE;
   app();
