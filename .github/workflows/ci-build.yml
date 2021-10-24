@@ -22,17 +22,12 @@ jobs:
       - name: Configure python
         run: python3 -m pip install setuptools wheel meson ninja 
 
-      - name: Patch
-        working-directory: ./gateware/deps
-        run: |
-          git apply --verbose --directory=gateware/deps/liteeth 001-liteeth.patch
-
       # Build
       - name: Build project
         run: |
           pushd gateware
-          python3 boson-eth-bitstream.py --lx-check-deps
-          python3 boson-eth-bitstream.py --lx-print-env
-          python3 boson-eth-bitstream.py
+          python3 boson-sd-bitstream.py --lx-check-deps
+          python3 boson-sd-bitstream.py --lx-print-env
+          python3 boson-sd-bitstream.py
           popd
 
