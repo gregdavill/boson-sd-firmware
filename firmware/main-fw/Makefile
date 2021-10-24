@@ -3,12 +3,9 @@ include $(SOC_DIRECTORY)/software/common.mak
 
 CFLAGS += -fpack-struct -O2 -I$(MAIN-FW_DIRECTORY)/include -fdata-sections -ffunction-sections
 
-OBJECTS=main.o time.o i2c.o boson.o flirCRC.o Serializer_BuiltIn.o telnet.o ethernet.o stdio_wrap.o
+OBJECTS=main.o time.o # boson.o flirCRC.o Serializer_BuiltIn.o 
 
-vpath % $(MAIN-FW_DIRECTORY) $(MAIN-FW_DIRECTORY)/boson
-
-
-include $(UIP_DIRECTORY)/Makefile.mk
+vpath % $(MAIN-FW_DIRECTORY) $(MAIN-FW_DIRECTORY)/boson 
 
 all: main-fw.bin size
 
@@ -23,18 +20,17 @@ else
 	$(PYTHON) -m litex.soc.software.mkmscimg $@
 endif
 
-main-fw.elf: $(MAIN-FW_DIRECTORY)/linker.ld $(OBJECTS)
+main-fw.elf:
 
-vpath %.a $(PACKAGES:%=../%)
 
-%.elf: crt0.o libuip.a $(LIBS:%=%.a)
+main-fw.elf: crt0.o $(MAIN-FW_DIRECTORY)/linker.ld $(OBJECTS)
 	$(CC) $(LDFLAGS) -T $(MAIN-FW_DIRECTORY)/linker.ld -N -o $@ \
 		crt0.o \
 		$(OBJECTS) \
-		$(PACKAGES:%=-L../%) -L../uip \
+		$(PACKAGES:%=-L../%) \
 		-Wl,--whole-archive \
 		-Wl,--gc-sections \
-		-luip $(LIBS:lib%=-l%)
+		-lc -llitesdcard -lcompiler_rt -lbase -lfatfs
 
 ifneq ($(OS),Windows_NT)
 	chmod -x $@

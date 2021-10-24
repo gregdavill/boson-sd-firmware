@@ -21,7 +21,7 @@ SECTIONS
 		_etext = .;
 		FILL(0);
 		. = ALIGN(4);
-	} > rom
+	} > spiflash
 
 	.rodata :
 	{
@@ -38,7 +38,7 @@ SECTIONS
 		FILL(0);
 		. = ALIGN(8);
 		_erodata = .;
-	} > rom
+	} > spiflash
 
 	.data :
 	{
@@ -53,7 +53,7 @@ SECTIONS
 		FILL(0);
 		. = ALIGN(8);
 		_edata = .;
-	} > sram AT > rom
+	} > sram AT > spiflash
 
 	.bss :
 	{
