@@ -39,7 +39,7 @@ booter.elf: linker.ld $(OBJECTS)
 		$(PACKAGES:%=-L$(BUILD_DIR)/software/%) \
 		-Wl,--whole-archive \
 		-Wl,--gc-sections \
-		$(LIBS:lib%=-l%) 
+		-lcompiler_rt -lbase -lc 
 		
 	chmod -x $@
 
