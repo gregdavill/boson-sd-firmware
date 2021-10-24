@@ -156,7 +156,7 @@ class Boson_SoC(SoCCore):
             csr_data_width=32,
             ident_version=False,
             wishbone_timeout_cycles=128,
-            integrated_sram_size=32 * 1024,
+            integrated_sram_size=64 * 1024,
             cpu_reset_address=self.mem_map['sram'],
         )
 
@@ -252,6 +252,9 @@ class Boson_SoC(SoCCore):
         builder.software_packages = []
         builder.add_software_package("libcompiler_rt")
         builder.add_software_package("libbase")
+        builder.add_software_package("liblitesdcard")
+        builder.add_software_package("libc")
+        builder.add_software_package("libfatfs")
 
         builder.add_software_package("main-fw", "{}/../firmware/main-fw".format(os.getcwd()))
 
@@ -269,6 +272,7 @@ class Boson_SoC(SoCCore):
 
         # Remove un-needed sw packages
         builder.software_packages = []
+        builder.add_software_package("libc")
         builder.add_software_package("booter", "{}/../firmware/booter".format(os.getcwd()))
 
         builder._prepare_rom_software()

@@ -15,7 +15,7 @@ vpath %.S $(BOOTER_DIRECTORY)
 vpath %.a $(PACKAGES:%=../%)
 
 all: booter.bin
-	$(PYTHON) -m litex.soc.software.memusage bios.elf $(CURDIR)/../include/generated/regions.ld $(TRIPLE)
+	$(TRIPLE)-size booter.elf
 
 # pull in dependency info for *existing* .o files
 -include $(OBJECTS:.o=.d)
@@ -37,6 +37,9 @@ booter.elf: linker.ld $(OBJECTS)
 		-N -o $@ \
 		$(OBJECTS) \
 		$(PACKAGES:%=-L$(BUILD_DIR)/software/%) \
+		-Wl,--whole-archive \
+		-Wl,--gc-sections \
+		$(LIBS:lib%=-l%) 
 		
 	chmod -x $@
 
