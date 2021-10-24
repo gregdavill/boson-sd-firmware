@@ -33,6 +33,7 @@ from litex.soc.integration.builder import *
 
 from litex.soc.cores.bitbang import I2CMaster
 from litex.soc.cores.gpio import GPIOOut, GPIOIn
+from litex.soc.cores import uart
 
 from litex.soc.interconnect import stream, wishbone
 from litex.soc.interconnect.wishbone import Interface, Crossbar
@@ -129,11 +130,11 @@ class Boson_SoC(SoCCore):
     mem_map = {
         **SoCCore.mem_map,
         **{
-            "sram": 0x10000000,
-            "csr": 0xf0000000,
+            "sram":           0x10000000,
+            "csr":            0xf0000000,
             "vexriscv_debug": 0xf00f0000,
-            "hyperram": 0x20000000,
-            "spiflash": 0x30000000,
+            "hyperram":       0x20000000,
+            "spiflash":       0x30000000,
         },
     }
 
@@ -163,7 +164,7 @@ class Boson_SoC(SoCCore):
         platform.toolchain.build_template[0] = "yosys -q -l {build_name}.rpt {build_name}.ys"
         platform.toolchain.build_template[1] += f" --log {platform.name}-nextpnr.log --router router1"
         platform.toolchain.build_template[1] += f" --report {platform.name}-timing.json"
-        platform.toolchain.yosys_template[-1] += ' -abc2 '  # abc2/nowidelut generally give higher freq
+        platform.toolchain.yosys_template[-1] += ' '  # abc2/nowidelut generally give higher freq
 
         # crg -------------------------------------------------------------------------------------
         self.submodules.crg = _CRG(platform, sys_clk_freq)
@@ -185,7 +186,6 @@ class Boson_SoC(SoCCore):
 
         # SDMMC ------------------------------------------------------------------------------------
         self.add_sdcard(name="sdmmc", mode="read+write", use_emulator=False, software_debug=True)
-    
 
         # HyperRAM with DMAs -----------------------------------------------------------------------
         self.submodules.writer = writer = StreamWriter()
@@ -205,6 +205,32 @@ class Boson_SoC(SoCCore):
         self.submodules.prbs = PRBSStream()
         reader.add_source(self.prbs.source.source, "prbs")
         writer.add_sink(self.prbs.sink.sink, "prbs")
+
+        # IO/UART ----------------------------------------------------------------------------------
+        io = platform.request("io")
+        self.submodules.io_oe = GPIOOut(io.oe)
+        uart_pads = uart.UARTPads()
+
+        self.submodules.uart_phy = uart.UARTPHY(
+            pads     = uart_pads,
+            clk_freq = self.sys_clk_freq,
+            baudrate = 1000000)
+        self.submodules.uart = uart.UART(self.uart_phy,
+            tx_fifo_depth = 8,
+            rx_fifo_depth = 8)
+
+        self.irq.add("uart", use_loc_if_exists=True)
+
+        # Tristate control on USER I/O, connect UART.
+        io_out = TSTriple(len(io.out))
+        self.specials += io_out.get_tristate(io.out)
+        self.comb += [
+            io_out.o[0].eq(uart_pads.tx),
+            io_out.o[1].eq(0),
+
+            uart_pads.rx.eq(io_out.i[1]),
+            io_out.oe.eq(io.oe),
+        ]
 
         # Add git version into firmware
         def get_git_revision():

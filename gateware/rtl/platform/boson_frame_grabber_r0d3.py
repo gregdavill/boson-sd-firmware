@@ -41,7 +41,7 @@ _io = [
     ),
 
     ("sdmmc", 0,
-        Subsignal("clk", Pins("J18"),IOStandard("LVCMOS33"),Misc("PULLMODE=UP"),Misc("SLEWRATE=FAST")),
+        Subsignal("clk", Pins("J18"),IOStandard("LVCMOS33"),Misc("SLEWRATE=FAST")),
         Subsignal("cmd", Pins("H18"),IOStandard("LVCMOS33"),Misc("PULLMODE=UP"),Misc("SLEWRATE=FAST")),
         Subsignal("data", Pins("K18 L18 F18 G18"),IOStandard("LVCMOS33"),Misc("PULLMODE=UP"),Misc("SLEWRATE=FAST")),
         Subsignal("cd", Pins("F17"),IOStandard("LVCMOS33"),Misc("PULLMODE=UP")),
