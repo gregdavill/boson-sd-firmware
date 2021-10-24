@@ -182,7 +182,7 @@ class Boson_SoC(SoCCore):
         # SPI Flash --------------------------------------------------------------------------------
         from litespi.modules import W25Q128JV
         from litespi.opcodes import SpiNorFlashOpCodes as Codes
-        self.add_spi_flash(mode="4x", module=W25Q128JV(Codes.READ_1_1_4), with_master=False)
+        self.add_spi_flash(mode="4x", module=W25Q128JV(Codes.READ_1_1_4), with_master=True)
 
         # SDMMC ------------------------------------------------------------------------------------
         self.add_sdcard(name="sdmmc", mode="read+write", use_emulator=False, software_debug=True)
