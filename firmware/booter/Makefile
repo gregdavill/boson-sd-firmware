@@ -3,7 +3,7 @@ BUILD_DIR?=../../
 include $(BUILD_DIR)/software/include/generated/variables.mak
 include $(SOC_DIRECTORY)/software/common.mak
 
-CFLAGS += -I$(SOC_DIRECTORY)/software/include 
+CFLAGS += -Os
 
 OBJECTS=crt0.o \
 		main.o \
@@ -40,7 +40,7 @@ booter.elf: linker.ld $(OBJECTS)
 		$(PACKAGES:%=-L$(BUILD_DIR)/software/%) \
 		-Wl,--whole-archive \
 		-Wl,--gc-sections \
-		-lcompiler_rt -lbase -lc 
+		
 		
 	chmod -x $@
 

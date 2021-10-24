@@ -20,9 +20,6 @@ __attribute__((naked)) int main(int i, char **c)
   spiInit();
   spiSetQE();
 
-  /* Switch back to Memory mapped operation, now operating with Quad-IO */
-  spiFree();
-
   /* Set LED to OFF */
 	leds_out_write(0);
 

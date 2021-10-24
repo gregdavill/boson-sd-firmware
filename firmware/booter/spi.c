@@ -90,9 +90,9 @@ uint8_t spiReset(void) {
 }
 
 int spiInit(void) {
-	
-	/* Many of the MX25R1635F's config commands only run upto 33MHz. So div=2 ensures we're around the 20MHz range. */
-	spiflash_phy_clk_divisor_write(2);
+
+	/* MX25R1635F lets us operate upto 80MHz. So div=0 sets us around the 40MHz range.*/
+	spiflash_phy_clk_divisor_write(0);
 	
 	// Reset the SPI flash, which will return it to SPI mode even
 	// if it's in QPI mode, and ensure the chip is accepting commands.
@@ -135,8 +135,4 @@ void spiSetQE(void){
     }else{
 		while(1);
 	}
-}
-
-void spiFree(void) {
-
 }
