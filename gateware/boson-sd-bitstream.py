@@ -55,7 +55,6 @@ class _CRG(Module, AutoCSR):
 
     def __init__(self, platform, sys_clk_freq):
         self.clock_domains.cd_sys = ClockDomain()
-        self.clock_domains.cd_sdclk = ClockDomain()
 
         self.clock_domains.cd_hr = ClockDomain()
         self.clock_domains.cd_hr_90 = ClockDomain()
@@ -74,16 +73,7 @@ class _CRG(Module, AutoCSR):
         pll.create_clkout(self.cd_hr2x, sys_clk_freq * 2, margin=0)
         pll.create_clkout(self.cd_hr2x_90, sys_clk_freq * 2, phase=1, margin=0)  # SW tunes this phase during init
 
-        self.comb += self.cd_init.clk.eq(clk24)
-
-        sd_clk = 100e6
-
-        self.submodules.video_pll = video_pll = ECP5PLL()
-        video_pll.register_clkin(clk24, 24e6)
-        video_pll.create_clkout(self.cd_sdclk, sd_clk, margin=0)
-
-        
-
+        #self.comb += self.cd_init.clk.eq(clk24)
         self.comb += self.cd_sys.clk.eq(self.cd_hr.clk)
 
         platform.add_period_constraint(clk24, period_ns(24e6))
@@ -107,6 +97,8 @@ class _CRG(Module, AutoCSR):
                      o_CDIVX=self.cd_hr_90.clk),
             AsyncResetSynchronizer(self.cd_hr2x, ~pll.locked),
             AsyncResetSynchronizer(self.cd_hr, ~pll.locked),
+            AsyncResetSynchronizer(self.cd_hr2x_90, ~pll.locked),
+            AsyncResetSynchronizer(self.cd_hr_90, ~pll.locked),
             AsyncResetSynchronizer(self.cd_sys, ~pll.locked),
         ]
 
@@ -155,7 +147,7 @@ class Boson_SoC(SoCCore):
             with_uart=False,
             csr_data_width=32,
             ident_version=False,
-            wishbone_timeout_cycles=128,
+            wishbone_timeout_cycles=1024,
             integrated_sram_size=64 * 1024,
             cpu_reset_address=self.mem_map['sram'],
         )
@@ -174,15 +166,13 @@ class Boson_SoC(SoCCore):
         self.add_timer(name="timer2")
 
         # Leds -------------------------------------------------------------------------------------
-        _led_pins = platform.request_all("user_led")
-        led_pins = Signal(len(_led_pins))
-        self.comb += _led_pins.eq(~led_pins)
-        self.submodules.leds = LedChaser(pads=led_pins, sys_clk_freq=sys_clk_freq)
+        leds = platform.request_all("user_led")
+        self.submodules.leds = LedChaser(pads=leds, sys_clk_freq=sys_clk_freq)
 
         # SPI Flash --------------------------------------------------------------------------------
-        from litespi.modules import W25Q128JV
+        from litespi.modules import MX25R1635F
         from litespi.opcodes import SpiNorFlashOpCodes as Codes
-        self.add_spi_flash(mode="4x", module=W25Q128JV(Codes.READ_1_1_4), with_master=True)
+        self.add_spi_flash(mode="4x", module=MX25R1635F(Codes.READ_1_1_4), with_master=True)
 
         # SDMMC ------------------------------------------------------------------------------------
         self.add_sdcard(name="sdmmc", mode="read+write", use_emulator=False, software_debug=True)
@@ -231,6 +221,8 @@ class Boson_SoC(SoCCore):
             uart_pads.rx.eq(io_out.i[1]),
             io_out.oe.eq(io.oe),
         ]
+
+        self.comb += platform.request("rst_n").eq(1)
 
         # Add git version into firmware
         def get_git_revision():
@@ -307,12 +299,13 @@ def main():
     rand_rom = os.path.join(builder.output_dir, "gateware", "rand.data")
 
     input_config = os.path.join(builder.output_dir, "gateware", f"{soc.platform.name}.config")
+    output_config = os.path.join(builder.output_dir, "gateware", f"{soc.platform.name}_patched.config")
 
     # Create 256bytes rand fill for BRAM
     if (os.path.exists(rand_rom) == False) or (args.update_firmware == False):
         os.makedirs(os.path.join(builder.output_dir, 'software'), exist_ok=True)
         os.makedirs(os.path.join(builder.output_dir, 'gateware'), exist_ok=True)
-        os.system(f"ecpbram  --generate {rand_rom} --seed {0} --width {32} --depth {2048 // 4}")
+        os.system(f"ecpbram  --generate {rand_rom} --seed {0} --width {32} --depth {soc.integrated_sram_size // 4}")
 
         # patch random file into BRAM
         data = []
@@ -322,17 +315,17 @@ def main():
         soc.sram.mem.init = data
 
         # Build gateware
-        vns = builder.build(nowidelut=False)
+        vns = builder.build()
         soc.do_exit(vns)
 
     # create a compressed bitstream
-    output_bit = os.path.join(builder.output_dir, "gateware", "diva.bit")
+    output_bit = os.path.join(builder.output_dir, "gateware", "boson-sd-bitstream.bit")
     os.system(f"ecppack --freq 38.8 --compress --input {input_config} --bit {output_bit}")
 
     # Determine Bitstream size
     stage_1_filesize = os.path.getsize(output_bit)
     gateware_offset = 0x00000000
-    firmware_offset = (stage_1_filesize + 0x200) & ~(0x100 - 1)  # Add some fudge factor.
+    firmware_offset = (stage_1_filesize + 0x200) & ~(0x100 - 1)  # Add padding, align FW to next 0x100 block
     firmware_offset += gateware_offset  # bitstream offset
     print(f"Compressed file size: 0x{stage_1_filesize:0x}")
     print(f"Placing firmware at: 0x{firmware_offset:0x}")
@@ -349,11 +342,10 @@ def main():
     CreateFirmwareInit(get_mem_data(booter_file, soc.cpu.endianness), booter_init)
 
     # Insert Firmware into Gateware
-    os.system(f"ecpbram  --input {input_config} --output {input_config} --from {rand_rom} --to {booter_init}")
+    os.system(f"ecpbram  --input {input_config} --output {output_config} --from {rand_rom} --to {booter_init}")
 
     # create a compressed bitstream
-    output_dfu = os.path.join(builder.output_dir, "gateware", "boson-sd.dfu")
-    os.system(f"ecppack --freq 38.8 --compress --input {input_config} --bit {output_bit}")
+    os.system(f"ecppack --freq 38.8 --compress --input {output_config} --bit {output_bit}")
 
     # Due to bitstream compression the final size might change when we patch in the booter firmware.
     stage_2_filesize = os.path.getsize(output_bit)
@@ -366,9 +358,10 @@ def main():
     # Combine FLASH firmware
     from util.combine import CombineBinaryFiles
     flash_regions_final = {
-        "build/gateware/diva.bit": gateware_offset,  # SoC ECP5 Bitstream
-        "build/software/main-fw/main-fw.bin": firmware_offset,  # Circuit PYthon
+        "build/gateware/boson-sd-bitstream.bit": gateware_offset,  # SoC ECP5 Bitstream
+        "build/software/main-fw/main-fw.bin": firmware_offset,  # main firmware
     }
+    output_dfu = os.path.join(builder.output_dir, "gateware", "boson-sd.dfu")
     CombineBinaryFiles(flash_regions_final, output_dfu)
 
     # Add DFU suffix
