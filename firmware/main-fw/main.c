@@ -39,7 +39,6 @@ void isr(void){
 int main(int i, char **c)
 {	
 
-	
 #ifdef CONFIG_CPU_HAS_INTERRUPT
 	irq_setmask(0);
 	irq_setie(1);
@@ -82,8 +81,8 @@ void hb_service()
 	static int counter;
 
 	if(elapsed(&last_event, CONFIG_CLOCK_FREQUENCY/100)) {
-		counter = counter + 1;
-		if(counter > 10) {
+		leds_out_write(counter >= 5);
+		if(++counter >= 10) {
 			printf("frame_count: 0x%08x\n", frame_count);
 			counter = 0;
 		}

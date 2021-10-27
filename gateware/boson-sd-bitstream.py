@@ -144,7 +144,8 @@ class Boson_SoC(SoCCore):
             clk_freq=sys_clk_freq,
             cpu_type='vexriscv',
             cpu_variant='standard',
-            with_uart=False,
+            with_uart=True,
+            uart_name="jtag_uart",
             csr_data_width=32,
             ident_version=False,
             wishbone_timeout_cycles=1024,
@@ -201,25 +202,27 @@ class Boson_SoC(SoCCore):
         self.submodules.io_oe = GPIOOut(io.oe)
         uart_pads = uart.UARTPads()
 
-        self.submodules.uart_phy = uart.UARTPHY(
+        self.submodules.uart1_phy = uart.UARTPHY(
             pads     = uart_pads,
             clk_freq = self.sys_clk_freq,
             baudrate = 1000000)
-        self.submodules.uart = uart.UART(self.uart_phy,
+        self.submodules.uart1 = uart.UART(self.uart1_phy,
             tx_fifo_depth = 8,
             rx_fifo_depth = 8)
 
-        self.irq.add("uart", use_loc_if_exists=True)
+        self.irq.add("uart1", use_loc_if_exists=True)
 
         # Tristate control on USER I/O, connect UART.
-        io_out = TSTriple(len(io.out))
-        self.specials += io_out.get_tristate(io.out)
+        io_out = [TSTriple(), TSTriple()]
+        self.specials += io_out[0].get_tristate(io.out[0])
+        self.specials += io_out[1].get_tristate(io.out[1])
         self.comb += [
-            io_out.o[0].eq(uart_pads.tx),
-            io_out.o[1].eq(0),
+            io_out[0].o.eq(uart_pads.tx),
+            io_out[1].o.eq(0),
 
-            uart_pads.rx.eq(io_out.i[1]),
-            io_out.oe.eq(io.oe),
+            uart_pads.rx.eq(io_out[1].i),
+            io_out[0].oe.eq(io.oe[0]),
+            io_out[1].oe.eq(io.oe[1]),
         ]
 
         self.comb += platform.request("rst_n").eq(1)
