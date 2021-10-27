@@ -5,9 +5,10 @@ include $(SOC_DIRECTORY)/software/common.mak
 
 CFLAGS += -Os
 
-OBJECTS=crt0.o \
-		main.o \
-		spi.o
+OBJECTS=main.o \
+		boot-helper.o \
+		spi.o \
+		boot.o
 		
 
 vpath %.ld $(BOOTER_DIRECTORY)
@@ -36,10 +37,12 @@ booter.elf: linker.ld $(OBJECTS)
 	$(CC) $(LDFLAGS) \
 		-T $(BOOTER_DIRECTORY)/linker.ld \
 		-N -o $@ \
+		crt0.o \
 		$(OBJECTS) \
 		$(PACKAGES:%=-L$(BUILD_DIR)/software/%) \
 		-Wl,--whole-archive \
 		-Wl,--gc-sections \
+		-lc -lcompiler_rt -lbase
 		
 		
 	chmod -x $@
@@ -47,11 +50,15 @@ booter.elf: linker.ld $(OBJECTS)
 main.o: main.c
 	$(compile)
 
+crt0.o: $(CPU_DIRECTORY)/crt0.S
+	$(assemble)
+
 %.o: %.cpp
 	$(compilexx)
 
 %.o: %.c
 	$(compile)
+
 
 %.o: %.S
 	$(assemble)

@@ -5,6 +5,26 @@
 #include "spi.h"
 
 
+#include <irq.h>
+#include <uart.h>
+
+/* prototypes */
+void isr(void);
+
+void isr(void){
+	__attribute__((unused)) unsigned int irqs;
+
+	irqs = irq_pending() & irq_getmask();
+
+#ifdef CSR_UART_BASE
+#ifndef UART_POLLING
+	if(irqs & (1 << UART_INTERRUPT))
+		uart_isr();
+#endif
+#endif
+}
+
+
 
 /* Setting this to 'naked' removes 2 instructions which keep our stack clean for when we return. 
    Given we never return from this we can skip these. */
@@ -19,6 +39,16 @@ __attribute__((naked)) int main(int i, char **c)
   /* Switch to bitbang mode and poll SPI-ID then configure for Quad Mode */
   spiInit();
   spiSetQE();
+
+  irq_setmask(0);
+	irq_setie(1);
+	uart_init();
+  
+	printf("\n\n\n\e[92;1m    - Boson Booter - \e[0m\n");
+ 	printf("\n (c) Copyright 2021 Greg Davill \n");
+ 	printf(" fw built: "__DATE__ " " __TIME__ " \n\n");
+	
+	serialboot();
 
   /* Set LED to OFF */
 	leds_out_write(0);

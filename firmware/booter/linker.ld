@@ -9,10 +9,18 @@ SECTIONS
 {
 	.text :
 	{
+		. = ALIGN(4);
 		_ftext = .;
-		*(.text.start)
+                /* Make sure crt0 files come first, and they, and the isr */
+                /* don't get disposed of by greedy optimisation */
+                *crt0*(.text)
+                KEEP(*crt0*(.text))
+                KEEP(*(.text.isr))
+
 		*(.text .stub .text.* .gnu.linkonce.t.*)
 		_etext = .;
+		FILL(0);
+		. = ALIGN(4);
 	} > sram
 
 	.rodata :
