@@ -202,15 +202,15 @@ class Boson_SoC(SoCCore):
         self.submodules.io_oe = GPIOOut(io.oe)
         uart_pads = uart.UARTPads()
 
-        self.submodules.uart1_phy = uart.UARTPHY(
+        self.submodules.uart_phy = uart.UARTPHY(
             pads     = uart_pads,
             clk_freq = self.sys_clk_freq,
             baudrate = 1000000)
-        self.submodules.uart1 = uart.UART(self.uart1_phy,
+        self.submodules.uart = uart.UART(self.uart_phy,
             tx_fifo_depth = 8,
             rx_fifo_depth = 8)
 
-        self.irq.add("uart1", use_loc_if_exists=True)
+        self.irq.add("uart", use_loc_if_exists=True)
 
         # Tristate control on USER I/O, connect UART.
         io_out = [TSTriple(), TSTriple()]
@@ -224,8 +224,12 @@ class Boson_SoC(SoCCore):
             io_out[0].oe.eq(io.oe[0]),
             io_out[1].oe.eq(io.oe[1]),
         ]
-
-        self.comb += platform.request("rst_n").eq(1)
+        
+        # SW controlled Reset -------------------------------------------------------------------------
+        rst = Signal()
+        self.comb += rst.eq(~platform.request("rst_n"))
+        self.submodules.reset = GPIOOut(rst)
+        
 
         # Add git version into firmware
         def get_git_revision():
@@ -245,10 +249,10 @@ class Boson_SoC(SoCCore):
     def PackageFirmware(self, builder):
         # Remove un-needed sw packages
         builder.software_packages = []
+        builder.add_software_package("libc")
         builder.add_software_package("libcompiler_rt")
         builder.add_software_package("libbase")
         builder.add_software_package("liblitesdcard")
-        builder.add_software_package("libc")
         builder.add_software_package("libfatfs")
 
         builder.add_software_package("main-fw", "{}/../firmware/main-fw".format(os.getcwd()))
@@ -328,7 +332,8 @@ def main():
     # Determine Bitstream size
     stage_1_filesize = os.path.getsize(output_bit)
     gateware_offset = 0x00000000
-    firmware_offset = (stage_1_filesize + 0x200) & ~(0x100 - 1)  # Add padding, align FW to next 0x100 block
+    alignment = 65536 - 1 # FLASH Block Size 
+    firmware_offset = (stage_1_filesize + alignment) & ~(alignment)  # Add padding, align FW to next FLASH 64K block
     firmware_offset += gateware_offset  # bitstream offset
     print(f"Compressed file size: 0x{stage_1_filesize:0x}")
     print(f"Placing firmware at: 0x{firmware_offset:0x}")
