@@ -361,19 +361,17 @@ def main():
         "build/gateware/boson-sd-bitstream.bit": gateware_offset,  # SoC ECP5 Bitstream
         "build/software/main-fw/main-fw.bin": firmware_offset,  # main firmware
     }
-    output_dfu = os.path.join(builder.output_dir, "gateware", "boson-sd.dfu")
-    CombineBinaryFiles(flash_regions_final, output_dfu)
+    output_bin = os.path.join(builder.output_dir, "gateware", "boson-sd.bin")
+    CombineBinaryFiles(flash_regions_final, output_bin)
 
     # Add DFU suffix
-    os.system(f"dfu-suffix -p 16d0 -d 0fad -a {output_dfu}")
+#    os.system(f"dfu-suffix -p 16d0 -d 0fad -a {output_dfu}")
+    os.system(f"python -m litex.soc.software.mkmscimg -f {output_bin}")
 
     print(f"""Boson SD build complete!  
     
-  boson-sd.dfu size={os.path.getsize(output_dfu) / 1024 :.2f}KB ({os.path.getsize(output_dfu)} bytes) 
-    FLASH Usage: {(float)(os.path.getsize(output_dfu)) / (((1024*1024) - gateware_offset)/100) :.2f} %
-    
-    
-  Load using `dfu-util -D boson-sd.dfu`
+  boson-sd.dfu size={os.path.getsize(output_bin) / 1024 :.2f}KB ({os.path.getsize(output_bin)} bytes) 
+    FLASH Usage: {(float)(os.path.getsize(output_bin)) / (((1024*1024) - gateware_offset)/100) :.2f} %
     """)
 
 
