@@ -8,6 +8,8 @@ CFLAGS += -Os
 OBJECTS=main.o \
 		boot-helper.o \
 		spi.o \
+		hyperram.o \
+		time.o \
 		boot.o
 		
 

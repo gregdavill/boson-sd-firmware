@@ -74,51 +74,6 @@ class dummySink(Module):
             sink.ready.eq(1)
         ]
 
-class StreamBuffers(Module, AutoCSR):
-    def __init__(self):
-        n_buffers = 3
-
-        buffers = []
-
-        for i in range(n_buffers):
-            csr = CSRStorage(32, name=f'adr{i}')
-            setattr(self, f'adr{i}', csr)
-            buffers += [csr.storage]
-
-        
-
-        # Stream In buffer interface
-        self.rx_buffer = Signal(32)
-        rx_idx = Signal(3, reset=1)
-        self.rx_release = Signal()
-
-        # Stream out interface
-        self.tx_buffer = Signal(32)
-        tx_idx = Signal(3, reset=0)
-
-        self.sync += [
-            If(self.rx_release,
-                rx_idx.eq(rx_idx + 1),
-                If(rx_idx >= (n_buffers-1),
-                    rx_idx.eq(0),
-                ),
-                tx_idx.eq(tx_idx + 1),
-                If(tx_idx >= (n_buffers-1),
-                    tx_idx.eq(0),
-                ),
-            )
-        ]
-
-        for i in range(n_buffers):
-            self.comb += [
-                If(rx_idx == i, 
-                    self.rx_buffer.eq(buffers[i])
-                ),
-                If(tx_idx == i, 
-                    self.tx_buffer.eq(buffers[i])
-                ),
-            ]
-    
 
 @ResetInserter()
 class StreamWriter(Module, AutoCSR):
@@ -137,11 +92,11 @@ class StreamWriter(Module, AutoCSR):
         burst_end = Signal()
         burst_cnt = Signal(32)
         
-        self.start_address = Signal(32)
         adr = Signal(32)
 
         self.transfer_size = CSRStorage(32)
         self.burst_size = CSRStorage(32, reset=256)
+        self.start_address = CSRStorage(32)
 
         self.done = CSRStatus()
 
@@ -186,11 +141,7 @@ class StreamWriter(Module, AutoCSR):
 
         self.comb += [
             burst_end.eq(last_address | (burst_cnt == self.burst_size.storage - 1)),
-            If(self.short,
-                last_address.eq(tx_cnt >= self.transfer_size.storage - 1 - 28*640),
-            ).Else(
-                last_address.eq(tx_cnt >= self.transfer_size.storage - 1),
-            )
+            last_address.eq(tx_cnt >= self.transfer_size.storage - 1),
         ]
 
         self.sync += [
@@ -226,11 +177,7 @@ class StreamWriter(Module, AutoCSR):
             ),
             If((self.start & enabled & self.external_sync.storage) | (~self.external_sync.storage & self.enable.re),
                 NextValue(busy,1),
-                If(self.short,
-                    NextValue(adr, self.start_address + 14*640),
-                ).Else(
-                    NextValue(adr, self.start_address),
-                )
+                NextValue(adr, self.start_address.storage),
             )
         )
         fsm.act("ACTIVE",
@@ -279,11 +226,11 @@ class StreamReader(Module, AutoCSR):
         burst_end = Signal()
         burst_cnt = Signal(32)
         
-        self.start_address = Signal(32)
         adr = Signal(32)
 
         self.transfer_size = CSRStorage(32)
         self.burst_size = CSRStorage(32, reset=256)
+        self.start_address = CSRStorage(32)
 
         self.done = CSRStatus()
 
@@ -366,7 +313,7 @@ class StreamReader(Module, AutoCSR):
             ),
             If((self.start & enabled & self.external_sync.storage) | (~self.external_sync.storage & self.enable.re),
                 NextValue(busy,1),
-                NextValue(adr, self.start_address),
+                NextValue(adr, self.start_address.storage),
             )
         )
         fsm.act("ACTIVE",

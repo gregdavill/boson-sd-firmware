@@ -45,7 +45,7 @@ from migen.genlib.misc import timeline
 from migen.genlib.cdc import MultiReg, PulseSynchronizer
 
 from rtl.prbs import PRBSStream
-from rtl.wb_streamer import StreamReader, StreamWriter, StreamBuffers
+from rtl.wb_streamer import StreamReader, StreamWriter
 from rtl.streamable_hyperram import StreamableHyperRAM
 
 from rtl.video.boson import Boson
@@ -183,14 +183,6 @@ class Boson_SoC(SoCCore):
         self.submodules.reader = reader = StreamReader()
         self.submodules.hyperram = hyperram = StreamableHyperRAM(platform.request("hyper_ram"), devices=[reader, writer])
         self.register_mem("hyperram", self.mem_map['hyperram'], hyperram.bus, size=0x800000)
-
-        # Attach a StreamBuffer module to handle buffering of frames
-        self.submodules.buffers = buffers = StreamBuffers()
-        self.comb += [
-            buffers.rx_release.eq(reader.evt_done),
-            reader.start_address.eq(buffers.rx_buffer),
-            writer.start_address.eq(buffers.tx_buffer),
-        ]
 
         # PRBS Tester, used to test HyperRAM DMAs --------------------------------------------------
         self.submodules.prbs = PRBSStream()
