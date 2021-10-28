@@ -356,14 +356,12 @@ def main():
     # Combine FLASH firmware
     from util.combine import CombineBinaryFiles
     flash_regions_final = {
-        "build/gateware/boson-sd-bitstream.bit": gateware_offset,  # SoC ECP5 Bitstream
-        "build/software/main-fw/main-fw.bin": firmware_offset,  # main firmware
+        "build/gateware/boson-sd-bitstream.bit": gateware_offset,   # SoC ECP5 Bitstream
+        "build/software/main-fw/main-fw.bin": firmware_offset - 8,  # main firmware
     }
     output_bin = os.path.join(builder.output_dir, "gateware", "boson-sd.bin")
     CombineBinaryFiles(flash_regions_final, output_bin)
 
-    # Add DFU suffix
-#    os.system(f"dfu-suffix -p 16d0 -d 0fad -a {output_dfu}")
     os.system(f"python -m litex.soc.software.mkmscimg -f {output_bin}")
 
     print(f"""Boson SD build complete!  
