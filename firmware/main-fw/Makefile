@@ -3,9 +3,17 @@ include $(SOC_DIRECTORY)/software/common.mak
 
 CFLAGS += -fpack-struct -O2 -I$(MAIN-FW_DIRECTORY)/include -fdata-sections -ffunction-sections
 
-OBJECTS=main.o time.o # boson.o flirCRC.o Serializer_BuiltIn.o 
+OBJECTS=main.o \
+		time.o 
+		
+#ff.o \
+#ffunicode.o \
+#sdcard.o
+	
 
-vpath % $(MAIN-FW_DIRECTORY) $(MAIN-FW_DIRECTORY)/boson 
+# boson.o flirCRC.o Serializer_BuiltIn.o 
+
+vpath % $(MAIN-FW_DIRECTORY) $(MAIN-FW_DIRECTORY)/boson $(MAIN-FW_DIRECTORY)/fatfs/source
 
 all: main-fw.bin size
 
@@ -30,7 +38,7 @@ main-fw.elf: crt0.o $(MAIN-FW_DIRECTORY)/linker.ld $(OBJECTS)
 		$(PACKAGES:%=-L../%) \
 		-Wl,--whole-archive \
 		-Wl,--gc-sections \
-		-lc -llitesdcard -lcompiler_rt -lbase -lfatfs
+		-lc -lcompiler_rt -lbase -llitesdcard -lfatfs
 
 ifneq ($(OS),Windows_NT)
 	chmod -x $@

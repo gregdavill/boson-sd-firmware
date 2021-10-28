@@ -13,6 +13,8 @@
 #include <generated/git.h>
 
 
+#include <libfatfs/ff.h>
+
 #include <irq.h>
 #include <uart.h>
 
@@ -64,6 +66,38 @@ int main(int i, char **c)
 
 	uint32_t wait = 5000;
 
+	if(!sdphy_card_detect_read()){
+		sdcard_init();
+	}
+
+	FATFS FatFs;		/* FatFs work area needed for each volume */
+	FIL Fil;			/* File object needed for each open file */
+
+	UINT bw, br;
+	FRESULT fr;
+
+	uint8_t buff[256];
+
+
+	fr = f_mount(&FatFs, "", 1);		/* Give a work area to the default drive */
+
+	printf("result=%u, %u\n", fr, bw);
+	if (fr == FR_OK) {
+	
+		fr = f_open(&Fil, "test.txt", FA_READ);	/* Create a file */
+		if (fr == FR_OK) {
+			f_read(&Fil, buff, 256, &br);
+
+			fr = f_close(&Fil);							/* Close the file */
+			
+			printf("%s, %u\n ", buff, br);
+
+			printf("Create OK?\n");
+		}
+	}
+	printf("result=%u, %u\n", fr, bw);
+	
+
     while(1) {
 			if(uart_read_nonblock()){
 				char c = uart_read();
@@ -72,7 +106,7 @@ int main(int i, char **c)
 			}
 			//capture_service();
 			//transmit_service();
-			hb_service();
+			//hb_service();
 		
 	}
 	
@@ -89,7 +123,7 @@ void hb_service()
 	if(elapsed(&last_event, CONFIG_CLOCK_FREQUENCY/100)) {
 		leds_out_write(counter >= 5);
 		if(++counter >= 10) {
-			printf("frame_count: 0x%08x\n", frame_count);
+			printf("frame_count: 0x%08x %u\n", frame_count, sdphy_card_detect_read());
 			counter = 0;
 		}
 	}
