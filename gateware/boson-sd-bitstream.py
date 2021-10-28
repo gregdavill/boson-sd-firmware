@@ -218,9 +218,8 @@ class Boson_SoC(SoCCore):
         
         # SW controlled Reset -------------------------------------------------------------------------
         rst = Signal()
-        self.comb += rst.eq(~platform.request("rst_n"))
         self.submodules.reset = GPIOOut(rst)
-        
+        self.comb += platform.request("rst_n").eq(~rst)        
 
         # Add git version into firmware
         def get_git_revision():

@@ -43,37 +43,77 @@
 #define max(x, y) (((x) > (y)) ? (x) : (y))
 #define min(x, y) (((x) < (y)) ? (x) : (y))
 
+uint32_t max_load_addr = 0;
+
 /*-----------------------------------------------------------------------*/
 /* Boot                                                                  */
 /*-----------------------------------------------------------------------*/
 
 extern void boot_helper(unsigned long r1, unsigned long r2, unsigned long r3, unsigned long addr);
 
-void __attribute__((noreturn)) boot(unsigned long r1, unsigned long r2, unsigned long r3, unsigned long addr)
+void boot(unsigned long r1, unsigned long r2, unsigned long r3, unsigned long addr)
 {
+	
+	max_load_addr -= HYPERRAM_BASE;
+	uint8_t* data = (uint8_t*)HYPERRAM_BASE;
+
+	for(int addr = 0; addr < max_load_addr; addr += 0x10000){
+
+	
+	uint32_t len = addr + 0x10000 > max_load_addr ? ((max_load_addr - addr) + 0xFF) & ~0xFF : 0x10000;
+	uint32_t flash_address = addr;
+	
+
+		printf("%08x - %08x\n", addr, len);
+
+
+	/* First block in 64K erase block */	
+		spiflash_write_enable();
+		spiflash_sector_erase(flash_address);
+
+		/* While FLASH erase is in progress update LEDs */
+		while(spiflash_read_status_register() & 1){ };
+
+	
+	for(int i = 0; i < len / 256; i++){
+
+		spiflash_write_enable();
+		spiflash_page_program(flash_address, data, 256);
+		flash_address += 256;
+		data += 256;
+
+
+		/* While FLASH erase is in progress update LEDs */
+		while(spiflash_read_status_register() & 1){ };
+	}
+
+
+
+
+	}
+
+	printf("jump to %08x\n", SPIFLASH_BASE);
+
 	printf("Executing booted program at 0x%08lx\n\n", addr);
 	printf("--============= \e[1mLiftoff!\e[0m ===============--\n");
-#ifdef CSR_UART_BASE
 	uart_sync();
-#endif
-#ifdef CONFIG_CPU_HAS_INTERRUPT
 	irq_setmask(0);
 	irq_setie(0);
-#endif
 	flush_cpu_icache();
 	flush_cpu_dcache();
 	flush_l2_cache();
 
-#if defined(CONFIG_CPU_TYPE_MOR1KX) && defined(CONFIG_CPU_VARIANT_LINUX)
-	/* Mainline Linux expects to have exception vector base address set to the
-	 * base address of Linux kernel; it also expects to be run with an offset
-	 * of 0x100. */
-	mtspr(SPR_EVBAR, addr);
-	addr += 0x100;
-#endif
 
-	boot_helper(r1, r2, r3, addr);
-	while(1);
+/* Perform a jump directly to our firmware located in the memory mapped SPIFLASH 
+   * Note we configure SPI_BASE as the origin point of our firmware.
+   * In reality it's actually located at an offset to skip over the bootloader and gateware.
+   * 
+   * Note 'SPIFLASH_BASE' is re-defined in boson-sd-bitstream before we compile this source.
+   */
+  void (*app)(void) = (void (*)(void))SPIFLASH_BASE;
+  app();
+
+
 }
 
 enum {
@@ -262,6 +302,8 @@ int serialboot(void)
 				load_addr = (char *)(uintptr_t) get_uint32(&frame.payload[0]);
 				memcpy(load_addr, &frame.payload[4], frame.payload_length);
 
+				max_load_addr = load_addr + frame.payload_length;
+
 				/* Acknowledge and continue */
 				uart_write(SFL_ACK_SUCCESS);
 				break;
@@ -276,6 +318,9 @@ int serialboot(void)
 				/* Acknowledge and jump */
 				uart_write(SFL_ACK_SUCCESS);
 				jump_addr = get_uint32(&frame.payload[0]);
+
+				printf("max_load_addr=%08x\n", max_load_addr);
+
 				boot(0, 0, 0, jump_addr);
 				break;
 			}

@@ -53,11 +53,11 @@ void set_clk_delay(int cnt){
 static int basic_memtest(void){
 
 	*((volatile uint32_t*)HYPERRAM_BASE) = 0xFF55AACD;
-	flush_cpu_dcache();
 	if(*((volatile uint32_t*)HYPERRAM_BASE) != 0xFF55AACD)
 		return 0;
 //
 
+	flush_cpu_dcache();
 flush_cpu_icache();
 	*((volatile uint32_t*)HYPERRAM_BASE) = 0xA3112233;
 	flush_cpu_dcache();

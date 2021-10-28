@@ -66,11 +66,12 @@ __attribute__((naked)) int main(int i, char **c)
 
       prbs_memtest(HYPERRAM_BASE, HYPERRAM_SIZE);
 	
+
+
 	serialboot();
 
   /* Set LED to OFF */
 	leds_out_write(0);
-
 
   /* Perform a jump directly to our firmware located in the memory mapped SPIFLASH 
    * Note we configure SPI_BASE as the origin point of our firmware.

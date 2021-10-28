@@ -3,13 +3,14 @@ BUILD_DIR?=../../
 include $(BUILD_DIR)/software/include/generated/variables.mak
 include $(SOC_DIRECTORY)/software/common.mak
 
-CFLAGS += -Os
+CFLAGS += -Os -DCRC16_FAST
 
 OBJECTS=main.o \
 		boot-helper.o \
 		spi.o \
 		hyperram.o \
 		time.o \
+		flash.o \
 		boot.o
 		
 
