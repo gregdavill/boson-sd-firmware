@@ -43,6 +43,7 @@
 #define max(x, y) (((x) > (y)) ? (x) : (y))
 #define min(x, y) (((x) < (y)) ? (x) : (y))
 
+uint32_t start_load_addr = 0;
 uint32_t max_load_addr = 0;
 
 /*-----------------------------------------------------------------------*/
@@ -55,11 +56,10 @@ void boot(unsigned long r1, unsigned long r2, unsigned long r3, unsigned long ad
 {
 	
 	max_load_addr -= HYPERRAM_BASE;
-	uint8_t* data = (uint8_t*)HYPERRAM_BASE;
+	uint8_t* data = (uint8_t*)start_load_addr;
 
-	for(int addr = 0; addr < max_load_addr; addr += 0x10000){
+	for(int addr = (start_load_addr - HYPERRAM_BASE); addr < max_load_addr; addr += 0x10000){
 
-	
 	uint32_t len = addr + 0x10000 > max_load_addr ? ((max_load_addr - addr) + 0xFF) & ~0xFF : 0x10000;
 	uint32_t flash_address = addr;
 	
@@ -87,14 +87,9 @@ void boot(unsigned long r1, unsigned long r2, unsigned long r3, unsigned long ad
 		while(spiflash_read_status_register() & 1){ };
 	}
 
-
-
-
 	}
 
-	printf("jump to %08x\n", SPIFLASH_BASE);
-
-	printf("Executing booted program at 0x%08lx\n\n", addr);
+	printf("Executing booted program at 0x%08lx\n\n", SPIFLASH_BASE);
 	printf("--============= \e[1mLiftoff!\e[0m ===============--\n");
 	uart_sync();
 	irq_setmask(0);
@@ -112,7 +107,6 @@ void boot(unsigned long r1, unsigned long r2, unsigned long r3, unsigned long ad
    */
   void (*app)(void) = (void (*)(void))SPIFLASH_BASE;
   app();
-
 
 }
 
@@ -302,6 +296,10 @@ int serialboot(void)
 				load_addr = (char *)(uintptr_t) get_uint32(&frame.payload[0]);
 				memcpy(load_addr, &frame.payload[4], frame.payload_length);
 
+				if(start_load_addr == 0){
+					start_load_addr = load_addr;
+				}
+				
 				max_load_addr = load_addr + frame.payload_length;
 
 				/* Acknowledge and continue */
