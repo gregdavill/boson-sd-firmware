@@ -1,14 +1,13 @@
 include ../include/generated/variables.mak
 include $(SOC_DIRECTORY)/software/common.mak
 
-CFLAGS += -fpack-struct -O2 -I$(MAIN-FW_DIRECTORY)/include -fdata-sections -ffunction-sections
+CFLAGS += -fpack-struct -Os -I$(MAIN-FW_DIRECTORY)/include -fdata-sections -ffunction-sections
 
 OBJECTS=main.o \
-		time.o 
-		
-#ff.o \
-#ffunicode.o \
-#sdcard.o
+		time.o 	\
+		ff.o \
+		ffunicode.o \
+		sdcard.o
 	
 
 # boson.o flirCRC.o Serializer_BuiltIn.o 
@@ -38,7 +37,8 @@ main-fw.elf: crt0.o $(MAIN-FW_DIRECTORY)/linker.ld $(OBJECTS)
 		$(PACKAGES:%=-L../%) \
 		-Wl,--whole-archive \
 		-Wl,--gc-sections \
-		-lc -lcompiler_rt -lbase -llitesdcard -lfatfs
+		-lc -lcompiler_rt -lbase -llitesdcard \
+		-Xlinker -Map=main-fw.map
 
 ifneq ($(OS),Windows_NT)
 	chmod -x $@

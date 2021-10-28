@@ -24,6 +24,45 @@ uint32_t frame_count = 0;
 void isr(void);
 
 
+#define NUMBER_OF_BYTES_ON_A_LINE 16
+void dump_bytes(unsigned int *ptr, int count, unsigned long addr)
+{
+	char *data = (char *)ptr;
+	int line_bytes = 0, i = 0;
+
+	fputs("Memory dump:", stdout);
+	while (count > 0) {
+		line_bytes =
+			(count > NUMBER_OF_BYTES_ON_A_LINE)?
+				NUMBER_OF_BYTES_ON_A_LINE : count;
+
+		printf("\n0x%08lx  ", addr);
+		for (i = 0; i < line_bytes; i++)
+			printf("%02x ", *(unsigned char *)(data+i));
+
+		for (; i < NUMBER_OF_BYTES_ON_A_LINE; i++)
+			printf("   ");
+
+		printf(" ");
+
+		for (i = 0; i<line_bytes; i++) {
+			if ((*(data+i) < 0x20) || (*(data+i) > 0x7e))
+				printf(".");
+			else
+				printf("%c", *(data+i));
+		}
+
+		for (; i < NUMBER_OF_BYTES_ON_A_LINE; i++)
+			printf(" ");
+
+		data += (char)line_bytes;
+		count -= line_bytes;
+		addr += line_bytes;
+	}
+	printf("\n");
+}
+
+
 void isr(void){
 	__attribute__((unused)) unsigned int irqs;
 
@@ -66,9 +105,9 @@ int main(int i, char **c)
 
 	uint32_t wait = 5000;
 
-	if(!sdphy_card_detect_read()){
-		sdcard_init();
-	}
+	//if(!sdphy_card_detect_read()){
+	//	sdcard_init();
+	//}
 
 	FATFS FatFs;		/* FatFs work area needed for each volume */
 	FIL Fil;			/* File object needed for each open file */
@@ -76,26 +115,27 @@ int main(int i, char **c)
 	UINT bw, br;
 	FRESULT fr;
 
-	uint8_t buff[256];
-
+	uint8_t buff[256] __attribute__ ((aligned (4)));
 
 	fr = f_mount(&FatFs, "", 1);		/* Give a work area to the default drive */
 
-	printf("result=%u, %u\n", fr, bw);
+	printf("f_mount()=%u, %u\n", fr, bw);
 	if (fr == FR_OK) {
 	
-		fr = f_open(&Fil, "test.txt", FA_READ);	/* Create a file */
+		fr = f_open(&Fil, "HELLO.TXT", FA_READ);	/* Open a file */
+		printf("f_open()=%u, %u\n", fr, bw);
 		if (fr == FR_OK) {
-			f_read(&Fil, buff, 256, &br);
-
+			fr = f_read(&Fil, buff, 256, &br);
+			printf("f_read()=%u\n", fr);
+			if (fr == FR_OK) {
+			
+				printf("%s, %u\n ", buff, br);
+			}
 			fr = f_close(&Fil);							/* Close the file */
 			
-			printf("%s, %u\n ", buff, br);
 
-			printf("Create OK?\n");
 		}
 	}
-	printf("result=%u, %u\n", fr, bw);
 	
 
     while(1) {

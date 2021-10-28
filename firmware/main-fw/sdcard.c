@@ -45,9 +45,6 @@ DRESULT disk_write (BYTE pdrv, const BYTE* buff, LBA_t sector, UINT count){
 
 #define NULL (0)
 
-extern void print(const char *);
-extern void dump(const BYTE *buff, WORD cnt);
-
 static void memcpy(uint8_t *dst, uint8_t *src, uint32_t count)
 {
 	if (count == 0)
@@ -123,17 +120,25 @@ static int send_cmd(			/* Returns 1 when function succeeded otherwise returns 0 
 					DWORD *buff /* Response return buffer */
 )
 {
+	if (idx & 0x80)
+	{														/* Send a CMD55 prior to the specified command if it is ACMD class */
+		if (!send_cmd(CMD55, (DWORD)CardRCA << 16, 1, buff) /* When CMD55 is failed, */
+			|| !(buff[0] & 0x00000020))
+			return 0; /* exit with error */
+	}
+	idx &= 0x3F; /* Mask out ACMD flag */
+	
 	int ret = sdcard_send_command(arg, idx, rt);
     uint32_t r[SD_CMD_RESPONSE_SIZE/4];
     csr_rd_buf_uint32(CSR_SDCORE_CMD_RESPONSE_ADDR,
 			  r, SD_CMD_RESPONSE_SIZE/4);
 
-    buff[0] = r[0];
-    buff[1] = r[1];
-    buff[2] = r[2];
-    buff[3] = r[3];
+    buff[0] = r[3];
+    buff[1] = r[2];
+    buff[2] = r[1];
+    buff[3] = r[0];
 
-	return ret; /* Return */
+	return 1; /* Return */
 }
 
 /*-----------------------------------------------------------------------*/
@@ -188,9 +193,9 @@ static void bswap_cp(BYTE *dst, const DWORD *src)
 /* Initialize Disk Drive                                                 */
 /*-----------------------------------------------------------------------*/
 
-DSTATUS disk_initialize0(BYTE pdrv)
+DSTATUS disk_initialize(BYTE pdrv)
 {
-    uint16_t rca, timeout;
+    uint16_t timeout;
 	UINT cmd, n;
 	DWORD resp[4];
 	BYTE ty;
@@ -216,10 +221,13 @@ DSTATUS disk_initialize0(BYTE pdrv)
 
 	/*---- Card is 'idle' state ----*/
 
+	printf("IDLE\n");
 	int Timer = 1000;				   /* Initialization timeout of 1000 msec */
 	if (send_cmd(CMD8, 0x1AA, 1, resp) /* Is the card SDv2? */
 		&& (resp[0] & 0xFFF) == 0x1AA)
 	{ /* The card can work at vdd range of 2.7-3.6V */
+
+	printf("v2?\n");
 		do
 		{ /* Wait while card is busy state (use ACMD41 with HCS bit) */
 
@@ -230,6 +238,9 @@ DSTATUS disk_initialize0(BYTE pdrv)
 			if (!Timer--)
 				goto di_fail;
 		} while (!send_cmd(ACMD41, 0x40FF8000, 1, resp) || !(resp[0] & 0x80000000));
+	
+		printf("done\n");
+	
 		ty = (resp[0] & 0x40000000) ? CT_SD2 | CT_BLOCK : CT_SD2; /* Check CCS bit in the OCR */
 	}
 	else
@@ -254,6 +265,9 @@ DSTATUS disk_initialize0(BYTE pdrv)
 		} while (!send_cmd(cmd, 0x00FF8000, 1, resp) || !(resp[0] & 0x80000000));
 	}
 
+
+	printf("a");
+
 	CardType = ty;				   /* Save card type */
 	bswap_cp(&CardInfo[32], resp); /* Save OCR */
 
@@ -263,6 +277,9 @@ DSTATUS disk_initialize0(BYTE pdrv)
 		goto di_fail; /* Enter ident state */
 	for (n = 0; n < 4; n++)
 		bswap_cp(&CardInfo[n * 4 + 16], &resp[n]); /* Save CID */
+
+
+	printf("b");
 
 	/*---- Card is 'ident' state ----*/
 
@@ -279,6 +296,9 @@ DSTATUS disk_initialize0(BYTE pdrv)
 		CardRCA = 1;
 	}
 
+
+
+	printf("c");
 	/*---- Card is 'stby' state ----*/
 
 	if (!send_cmd(CMD9, (DWORD)CardRCA << 16, 2, resp))
@@ -290,30 +310,29 @@ DSTATUS disk_initialize0(BYTE pdrv)
 
 	/*---- Card is 'tran' state ----*/
 
-	if (!(ty & CT_BLOCK))
-	{ /* Set data block length to 512 (for byte addressing cards) */
-		if (!send_cmd(CMD16, 512, 1, resp) || (resp[0] & 0xFDF90000))
-			goto di_fail;
-	}
 
-	if (ty & CT_SDC)
-	{ /* Set wide bus mode (for SDCs) */
-		if (!send_cmd(ACMD6, 2, 1, resp) || (resp[0] & 0xFDF90000))
-		{ /* Set wide bus mode of SDC */
-			goto di_fail;
-		}
+	printf("d");
+	
 
-		//SDC_CONTROL = 1; /* Enable Wide bus */
-	}
 
-	/* Select card */
-	if (sdcard_select_card(CardRCA) != SD_OK)
+	printf("e");
+	/* Set bus width */
+	if (sdcard_app_cmd(CardRCA) != SD_OK)
 		return 0;
+	
+	printf("f");
+	if(sdcard_app_set_bus_width() != SD_OK)
+		return 0;
+
+
+	printf("speed!");
 
 	/* Switch speed */
 	if (sdcard_switch(SD_SWITCH_SWITCH, SD_GROUP_ACCESSMODE, SD_SPEED_SDR25) != SD_OK)
 		return 0;
 
+
+	printf("scr!");
 	/* Send SCR */
 	/* FIXME: add scr decoding (optional) */
 	if (sdcard_app_cmd(CardRCA) != SD_OK)
@@ -321,10 +340,16 @@ DSTATUS disk_initialize0(BYTE pdrv)
 	if (sdcard_app_send_scr() != SD_OK)
 		return 0;
 
+
+	printf("bl!");
+
 	/* Set block length */
 	if (sdcard_app_set_blocklen(512) != SD_OK)
 		return 0;
 
+	
+	printf("fin!");
+	
 
 	Stat &= ~STA_NOINIT; /* Clear STA_NOINIT */
 	return Stat;
@@ -334,7 +359,7 @@ DSTATUS disk_initialize0(BYTE pdrv)
 
 
 di_fail:
-	print("Init Fail\r\n");
+	printf("Init Fail\r\n");
 	
 	Stat |= STA_NOINIT; /* Set STA_NOINIT */
 	return Stat;
@@ -344,7 +369,7 @@ di_fail:
 /* Get Disk Status                                                       */
 /*-----------------------------------------------------------------------*/
 
-DSTATUS disk_status0(BYTE pdrv)
+DSTATUS disk_status(BYTE pdrv)
 {
 	return Stat;
 }
@@ -457,10 +482,10 @@ DRESULT disk_ioctl(
 	case MMC_GET_SDSTAT: /* Receive SD status as a data block (64 bytes) */
 		if (CardType & CT_SDC)
 		{ /* SDC */
-			print("Get Data Block ");
+			printf("Get Data Block ");
 			if (wait_ready(500))
 			{
-				print("Ready?");
+				printf("Ready?");
 				//SDC_BLOCKSIZE = 63;
 				//SDC_BLOCKCOUNT = 0x1;
 				//ready_reception(1, 64);			 /* Ready to receive data blocks */
@@ -470,7 +495,7 @@ DRESULT disk_ioctl(
 					res = RES_OK;
 				}
 			}
-			print("\r\n");
+			printf("\r\n");
 			//stop_transfer(); /* Close data path */
 		}
 		break;
