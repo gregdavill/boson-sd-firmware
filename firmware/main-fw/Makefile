@@ -1,7 +1,7 @@
 include ../include/generated/variables.mak
 include $(SOC_DIRECTORY)/software/common.mak
 
-CFLAGS += -fpack-struct -Os -I$(MAIN-FW_DIRECTORY)/include -fdata-sections -ffunction-sections
+CFLAGS += -O2 -I$(MAIN-FW_DIRECTORY)/include -fdata-sections -ffunction-sections
 
 OBJECTS=main.o \
 		time.o 	\
@@ -37,8 +37,7 @@ main-fw.elf: crt0.o $(MAIN-FW_DIRECTORY)/linker.ld $(OBJECTS)
 		$(PACKAGES:%=-L../%) \
 		-Wl,--whole-archive \
 		-Wl,--gc-sections \
-		-lc -lcompiler_rt -lbase -llitesdcard \
-		-Xlinker -Map=main-fw.map
+		-lc -lcompiler_rt -lbase
 
 ifneq ($(OS),Windows_NT)
 	chmod -x $@

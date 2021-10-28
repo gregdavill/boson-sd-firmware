@@ -115,9 +115,8 @@ int main(int i, char **c)
 	UINT bw, br;
 	FRESULT fr;
 
-	uint8_t buff[256] __attribute__ ((aligned (4)));
 
-	fr = f_mount(&FatFs, "", 1);		/* Give a work area to the default drive */
+	fr = f_mount(&FatFs, "", 0);		/* Give a work area to the default drive */
 
 	printf("f_mount()=%u, %u\n", fr, bw);
 	if (fr == FR_OK) {
@@ -125,17 +124,20 @@ int main(int i, char **c)
 		fr = f_open(&Fil, "HELLO.TXT", FA_READ);	/* Open a file */
 		printf("f_open()=%u, %u\n", fr, bw);
 		if (fr == FR_OK) {
-			fr = f_read(&Fil, buff, 256, &br);
+			uint8_t buff[256] __attribute__ ((aligned (4)));
+			fr = f_read(&Fil, buff, 32, &br);
+			
 			printf("f_read()=%u\n", fr);
 			if (fr == FR_OK) {
-			
-				printf("%s, %u\n ", buff, br);
+				dump_bytes(buff, br, 0);
+				//printf("%s %u\n ", buff, br);
 			}
 			fr = f_close(&Fil);							/* Close the file */
 			
 
 		}
 	}
+
 	
 
     while(1) {
@@ -144,6 +146,7 @@ int main(int i, char **c)
 				if(c == 'b')
 					reset_out_write(1);
 			}
+
 			//capture_service();
 			//transmit_service();
 			//hb_service();

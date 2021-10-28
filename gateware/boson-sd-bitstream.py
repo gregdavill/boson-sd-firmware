@@ -175,7 +175,7 @@ class Boson_SoC(SoCCore):
         self.add_spi_flash(mode="4x", module=MX25R1635F(Codes.READ_1_1_4), with_master=True)
 
         # SDMMC ------------------------------------------------------------------------------------
-        self.add_sdcard(name="sdmmc", mode="read+write", use_emulator=False, software_debug=True)
+        self.add_sdcard(name="sdmmc", mode="read+write", use_emulator=False, software_debug=False)
 
         # HyperRAM with DMAs -----------------------------------------------------------------------
         self.submodules.writer = writer = StreamWriter()
@@ -242,8 +242,6 @@ class Boson_SoC(SoCCore):
         builder.add_software_package("libc")
         builder.add_software_package("libcompiler_rt")
         builder.add_software_package("libbase")
-        builder.add_software_package("liblitesdcard")
-        builder.add_software_package("libfatfs")
 
         builder.add_software_package("main-fw", "{}/../firmware/main-fw".format(os.getcwd()))
 
