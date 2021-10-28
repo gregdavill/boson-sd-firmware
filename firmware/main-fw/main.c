@@ -31,6 +31,7 @@ void isr(void){
 #ifndef UART_POLLING
 	if(irqs & (1 << UART_INTERRUPT))
 		uart_isr();
+
 #endif
 #endif
 }
@@ -64,6 +65,11 @@ int main(int i, char **c)
 	uint32_t wait = 5000;
 
     while(1) {
+			if(uart_read_nonblock()){
+				char c = uart_read();
+				if(c == 'b')
+					reset_out_write(1);
+			}
 			//capture_service();
 			//transmit_service();
 			hb_service();
