@@ -112,31 +112,62 @@ int main(int i, char **c)
 	FATFS FatFs;		/* FatFs work area needed for each volume */
 	FIL Fil;			/* File object needed for each open file */
 
+	printf("&FatFs = %08x\n", &FatFs);
+	printf("&Fil = %08x\n", &Fil);
+
 	UINT bw, br;
 	FRESULT fr;
 
+	uint8_t* ptr = HYPERRAM_BASE;
+	uint8_t buff[128];
 
-	fr = f_mount(&FatFs, "", 0);		/* Give a work area to the default drive */
+	fr = f_mount(&FatFs, "", 1);		/* Give a work area to the default drive */
 
 	printf("f_mount()=%u, %u\n", fr, bw);
 	if (fr == FR_OK) {
 	
-		fr = f_open(&Fil, "HELLO.TXT", FA_READ);	/* Open a file */
+		fr = f_open(&Fil, "hello.txt", FA_READ);	/* Open a file */
 		printf("f_open()=%u, %u\n", fr, bw);
 		if (fr == FR_OK) {
-			uint8_t buff[256] __attribute__ ((aligned (4)));
-			fr = f_read(&Fil, buff, 32, &br);
+			fr = f_read(&Fil, buff, 128, &br);
 			
-			printf("f_read()=%u\n", fr);
+			printf("f_read()=%u %u\n", fr, br);
 			if (fr == FR_OK) {
 				dump_bytes(buff, br, 0);
-				//printf("%s %u\n ", buff, br);
 			}
 			fr = f_close(&Fil);							/* Close the file */
-			
+		}
 
+
+		fr = f_open(&Fil, "output.bin", FA_WRITE | FA_CREATE_ALWAYS);	/* Open a file */
+		printf("f_open()=%u\n", fr);
+
+		fr = f_expand(&Fil, 1*1024*1024, 1);
+		printf("f_expand()=%u\n", fr);
+
+		if (fr == FR_OK) {
+
+			if(0){
+			/* Get physical location of the file data */
+			DWORD drv = Fil.obj.fs->pdrv;
+			DWORD lba = Fil.obj.fs->database + Fil.obj.fs->csize * (Fil.obj.sclust - 2);
+
+			/* Write 2048 sectors from top of the file at a time */
+			fr = disk_write(drv, ptr, lba, 1024*1024 / 512);
+			}
+			else{
+				fr  = f_write(&Fil, ptr, 1*1024*1024, &br);
+			}
+			
+			printf("f_write()=%u %u\n", fr, br);
+			if (fr == FR_OK) {
+
+			}
+			fr = f_close(&Fil);	 /* Close the file */
 		}
 	}
+
+	printf("Done!");
 
 	
 

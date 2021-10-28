@@ -3565,7 +3565,6 @@ static FRESULT validate (	/* Returns FR_OK or FR_INVALID_OBJECT */
 {
 	FRESULT res = FR_INVALID_OBJECT;
 
-
 	if (obj && obj->fs && obj->fs->fs_type && obj->id == obj->fs->id) {	/* Test if the object is valid */
 #if FF_FS_REENTRANT
 		if (lock_fs(obj->fs)) {	/* Obtain the filesystem object */

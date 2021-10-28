@@ -30,7 +30,7 @@
 #endif
 
 #ifndef SDCARD_CLK_FREQ
-#define SDCARD_CLK_FREQ 25000000
+#define SDCARD_CLK_FREQ 20000000
 #endif
 
 /* MMC card type flags (MMC_GET_TYPE) */
@@ -61,7 +61,7 @@ int sdcard_wait_cmd_done(void) {
 	for (;;) {
 		event = sdcore_cmd_event_read();
 #ifdef SDCARD_DEBUG
-		printf("cmdevt: %08x\n", event);
+		//printf("cmdevt: %08x\n", event);
 #endif
 		busy_wait_us(10);
 		if (event & 0x1)
@@ -71,7 +71,7 @@ int sdcard_wait_cmd_done(void) {
 	/* Load bearing delay. 
 	 * When SDCARD_DEBUG is undefined 
 	 * this delay is required for correct operation */
-	busy_wait_us(10);
+	busy_wait_us(50);
 
 #ifdef SDCARD_DEBUG
 	csr_rd_buf_uint32(CSR_SDCORE_CMD_RESPONSE_ADDR,
@@ -90,7 +90,7 @@ int sdcard_wait_data_done(void) {
 	for (;;) {
 		event = sdcore_data_event_read();
 #ifdef SDCARD_DEBUG
-		printf("dataevt: %08x\n", event);
+		//printf("dataevt: %08x\n", event);
 #endif
 		if (event & 0x1)
 			break;
@@ -433,7 +433,10 @@ void sdcard_read(uint32_t block, uint32_t count, uint8_t* buf)
 
 	
 #ifdef SDCARD_DEBUG
-	//dump_bytes(buf, 512, buf);
+
+	flush_cpu_dcache();
+	flush_l2_cache();
+	dump_bytes(buf, 512, buf);
 #endif
 		/* Update Block/Buffer/Count */
 		block += nblocks;
@@ -741,6 +744,7 @@ DSTATUS disk_initialize(BYTE pdrv)
 	if (sdcard_app_set_blocklen(512) != SD_OK)
 		return 0;
 
+	
 
 	Stat &= ~STA_NOINIT; /* Clear STA_NOINIT */
 	return Stat;
@@ -776,6 +780,7 @@ DRESULT disk_write (BYTE pdrv, const BYTE* buff, LBA_t sector, UINT count){
 
 DSTATUS disk_status(BYTE pdrv)
 {
+	printf("disk_status() =%02x\n", Stat);
 	return Stat;
 }
 
