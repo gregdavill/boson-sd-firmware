@@ -30,7 +30,7 @@
 #endif
 
 #ifndef SDCARD_CLK_FREQ
-#define SDCARD_CLK_FREQ 20000000
+#define SDCARD_CLK_FREQ 25000000
 #endif
 
 /* MMC card type flags (MMC_GET_TYPE) */
@@ -39,6 +39,51 @@
 #define CT_SD2		0x04		/* SD ver 2 */
 #define CT_SDC		(CT_SD1|CT_SD2)	/* SD */
 #define CT_BLOCK	0x08		/* Block addressing */
+
+
+/* ----- MMC/SDC command ----- */
+#define CMD0 (0)		   /* GO_IDLE_STATE */
+#define CMD1 (1)		   /* SEND_OP_COND (MMC) */
+#define CMD2 (2)		   /* ALL_SEND_CID */
+#define CMD3 (3)		   /* SEND_RELATIVE_ADDR */
+#define ACMD6 (6 | 0x80)   /* SET_BUS_WIDTH (SDC) */
+#define CMD7 (7)		   /* SELECT_CARD */
+#define CMD8 (8)		   /* SEND_IF_COND */
+#define CMD9 (9)		   /* SEND_CSD */
+#define CMD10 (10)		   /* SEND_CID */
+#define CMD12 (12)		   /* STOP_TRANSMISSION */
+#define CMD13 (13)		   /* SEND_STATUS */
+#define ACMD13 (13 | 0x80) /* SD_STATUS (SDC) */
+#define CMD16 (16)		   /* SET_BLOCKLEN */
+#define CMD17 (17)		   /* READ_SINGLE_BLOCK */
+#define CMD18 (18)		   /* READ_MULTIPLE_BLOCK */
+#define CMD23 (23)		   /* SET_BLK_COUNT (MMC) */
+#define ACMD23 (23 | 0x80) /* SET_WR_BLK_ERASE_COUNT (SDC) */
+#define CMD24 (24)		   /* WRITE_BLOCK */
+#define CMD25 (25)		   /* WRITE_MULTIPLE_BLOCK */
+#define CMD32 (32)		   /* ERASE_ER_BLK_START */
+#define CMD33 (33)		   /* ERASE_ER_BLK_END */
+#define CMD38 (38)		   /* ERASE */
+#define ACMD41 (41 | 0x80) /* SEND_OP_COND (SDC) */
+#define CMD55 (55)		   /* APP_CMD */
+
+/*--------------------------------------------------------------------------
+
+   Module Private Functions
+
+---------------------------------------------------------------------------*/
+
+static volatile DSTATUS Stat = STA_NOINIT; /* Disk status */
+
+static volatile WORD Timer[2]; /* 1000Hz decrement timer for Transaction and Command */
+
+static WORD CardRCA;	   /* Assigned RCA */
+static BYTE CardType,	  /* Card type flag */
+	CardInfo[16 + 16 + 4]; /* CSD(16), CID(16), OCR(4) */
+
+/* Block transfer buffer (located in USB RAM) */
+//static DWORD blockBuff[128] __attribute__((section(".scratchpadRam0")));
+
 
 /*-----------------------------------------------------------------------*/
 /* Helpers                                                               */
@@ -259,6 +304,15 @@ int sdcard_app_set_blocklen(unsigned int blocklen) {
 	return sdcard_send_command(blocklen, 16, SDCARD_CTRL_RESPONSE_SHORT);
 }
 
+int sdcard_app_set_wr_block_erase_count(unsigned int blocks) {
+#ifdef SDCARD_DEBUG
+	printf("ACMD23: SET_WR_BLK_ERASE_COUNT\n");
+#endif
+	sdcard_app_cmd(CardRCA);
+	return sdcard_send_command(blocks, 23, SDCARD_CTRL_RESPONSE_SHORT);
+}
+
+
 int sdcard_write_single_block(unsigned int blockaddr) {
 #ifdef SDCARD_DEBUG
 	printf("CMD24: WRITE_SINGLE_BLOCK\n");
@@ -275,6 +329,9 @@ int sdcard_write_multiple_block(unsigned int blockaddr, unsigned int blockcnt) {
 #ifdef SDCARD_DEBUG
 	printf("CMD25: WRITE_MULTIPLE_BLOCK\n");
 #endif
+
+	sdcard_app_set_wr_block_erase_count(blockcnt);
+
 	sdcore_block_length_write(512);
 	sdcore_block_count_write(blockcnt);
 	while (sdcard_send_command(blockaddr, 25,
@@ -473,17 +530,18 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 #ifdef SDCARD_CMD23_SUPPORT
 		sdcard_set_block_count(nblocks);
 #endif
-		if (nblocks > 1){
+		if (nblocks > 1)
 			sdcard_write_multiple_block(block, nblocks);
-			/* Stop transmission (Only for multiple block writes) */
-			sdcard_stop_transmission();
-		}
 		else
 			sdcard_write_single_block(block);
 
 
 		/* Wait for DMA Reader to complete */
 		while ((sdmem2block_dma_done_read() & 0x1) == 0);
+
+		/* Stop transmission (Only for multiple block reads) */
+		if (nblocks > 1)
+			sdcard_stop_transmission();
 
 		/* Update Block/Buffer/Count */
 		block += nblocks;
@@ -493,49 +551,6 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 }
 #endif
 
-
-/* ----- MMC/SDC command ----- */
-#define CMD0 (0)		   /* GO_IDLE_STATE */
-#define CMD1 (1)		   /* SEND_OP_COND (MMC) */
-#define CMD2 (2)		   /* ALL_SEND_CID */
-#define CMD3 (3)		   /* SEND_RELATIVE_ADDR */
-#define ACMD6 (6 | 0x80)   /* SET_BUS_WIDTH (SDC) */
-#define CMD7 (7)		   /* SELECT_CARD */
-#define CMD8 (8)		   /* SEND_IF_COND */
-#define CMD9 (9)		   /* SEND_CSD */
-#define CMD10 (10)		   /* SEND_CID */
-#define CMD12 (12)		   /* STOP_TRANSMISSION */
-#define CMD13 (13)		   /* SEND_STATUS */
-#define ACMD13 (13 | 0x80) /* SD_STATUS (SDC) */
-#define CMD16 (16)		   /* SET_BLOCKLEN */
-#define CMD17 (17)		   /* READ_SINGLE_BLOCK */
-#define CMD18 (18)		   /* READ_MULTIPLE_BLOCK */
-#define CMD23 (23)		   /* SET_BLK_COUNT (MMC) */
-#define ACMD23 (23 | 0x80) /* SET_WR_BLK_ERASE_COUNT (SDC) */
-#define CMD24 (24)		   /* WRITE_BLOCK */
-#define CMD25 (25)		   /* WRITE_MULTIPLE_BLOCK */
-#define CMD32 (32)		   /* ERASE_ER_BLK_START */
-#define CMD33 (33)		   /* ERASE_ER_BLK_END */
-#define CMD38 (38)		   /* ERASE */
-#define ACMD41 (41 | 0x80) /* SEND_OP_COND (SDC) */
-#define CMD55 (55)		   /* APP_CMD */
-
-/*--------------------------------------------------------------------------
-
-   Module Private Functions
-
----------------------------------------------------------------------------*/
-
-static volatile DSTATUS Stat = STA_NOINIT; /* Disk status */
-
-static volatile WORD Timer[2]; /* 1000Hz decrement timer for Transaction and Command */
-
-static WORD CardRCA;	   /* Assigned RCA */
-static BYTE CardType,	  /* Card type flag */
-	CardInfo[16 + 16 + 4]; /* CSD(16), CID(16), OCR(4) */
-
-/* Block transfer buffer (located in USB RAM) */
-//static DWORD blockBuff[128] __attribute__((section(".scratchpadRam0")));
 
 /*-----------------------------------------------------------------------*/
 /* Send a command token to the card and receive a response               */
@@ -624,6 +639,8 @@ DSTATUS disk_initialize(BYTE pdrv)
 	DWORD resp[4];
 	BYTE ty;
 
+	printf("disk_initialize()\n");
+
 	/* Set SD clk freq to Initialization frequency */
 	sdcard_set_clk_freq(SDCARD_CLK_FREQ_INIT, 0);
 	busy_wait(1);
@@ -686,7 +703,7 @@ DSTATUS disk_initialize(BYTE pdrv)
 	CardType = ty;				   /* Save card type */
 	bswap_cp(&CardInfo[32], resp); /* Save OCR */
 
-	sdcard_set_clk_freq(SDCARD_CLK_FREQ, 0);
+	sdcard_set_clk_freq(SDCARD_CLK_FREQ, 1);
 
 	/*---- Card is 'ready' state ----*/
 
@@ -764,8 +781,8 @@ di_fail:
 /*-----------------------------------------------------------------------*/
 
 
-DRESULT disk_read(BYTE drv, BYTE *buf, LBA_t block, UINT count) {
-	sdcard_read(block, count, buf);
+DRESULT disk_read(BYTE drv, BYTE *buff, LBA_t sector, UINT count) {
+	sdcard_read(sector, count, buff);
 	return RES_OK;
 }
 
@@ -781,7 +798,6 @@ DRESULT disk_write (BYTE pdrv, const BYTE* buff, LBA_t sector, UINT count){
 
 DSTATUS disk_status(BYTE pdrv)
 {
-	printf("disk_status() =%02x\n", Stat);
 	return Stat;
 }
 
