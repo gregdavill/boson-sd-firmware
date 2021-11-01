@@ -473,13 +473,14 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 #ifdef SDCARD_CMD23_SUPPORT
 		sdcard_set_block_count(nblocks);
 #endif
-		if (nblocks > 1)
+		if (nblocks > 1){
 			sdcard_write_multiple_block(block, nblocks);
+			/* Stop transmission (Only for multiple block writes) */
+			sdcard_stop_transmission();
+		}
 		else
 			sdcard_write_single_block(block);
 
-		/* Stop transmission (Only for multiple block writes) */
-		sdcard_stop_transmission();
 
 		/* Wait for DMA Reader to complete */
 		while ((sdmem2block_dma_done_read() & 0x1) == 0);
