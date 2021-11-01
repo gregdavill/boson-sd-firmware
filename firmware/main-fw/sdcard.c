@@ -20,6 +20,7 @@
 #include "fatfs/source/diskio.h" /* Common include file for FatFs and disk I/O layer */
 #include "sdcard.h"
 
+#define USE_CACHE
 
 //#define SDCARD_CMD23_SUPPORT /* SET_BLOCK_COUNT */
 #define SDCARD_CMD18_SUPPORT /* READ_MULTIPLE_BLOCK */
@@ -641,6 +642,8 @@ DSTATUS disk_initialize(BYTE pdrv)
 
 	printf("disk_initialize()\n");
 
+	sd_cache_init(HYPERRAM_BASE + HYPERRAM_SIZE/2, HYPERRAM_SIZE/512/2);
+
 	/* Set SD clk freq to Initialization frequency */
 	sdcard_set_clk_freq(SDCARD_CLK_FREQ_INIT, 0);
 	busy_wait(1);
@@ -775,20 +778,52 @@ di_fail:
 }
 
 
-
 /*-----------------------------------------------------------------------*/
 /* SDCard FatFs disk functions                                           */
 /*-----------------------------------------------------------------------*/
 
 
 DRESULT disk_read(BYTE drv, BYTE *buff, LBA_t sector, UINT count) {
+
+#ifdef USE_CACHE
+	if(count == 1){
+		if(sd_cache_read(buff, sector, 1))
+		{
+			/* Found a block in our cache */
+			/* The call already performs a capy into our buffer */
+			return RES_OK;
+		}
+	}
+#endif
 	sdcard_read(sector, count, buff);
+
+#ifdef USE_CACHE
+	/* We have read a block, add it to the cache */
+	if(count == 1){
+		if(sd_cache_create(buff, sector, 1))
+		{
+			/* Return true either way */
+		}
+	}
+#endif
+
 	return RES_OK;
 }
 
 
 DRESULT disk_write (BYTE pdrv, const BYTE* buff, LBA_t sector, UINT count){
     sdcard_write(sector, count, buff);
+	
+#ifdef USE_CACHE
+	/* We have written a block, if this block exists in cache then update */
+	if(count == 1){
+		if(sd_cache_update(buff, sector, 1))
+		{
+			/* Return true either way */
+		}
+	}
+#endif
+
     return RES_OK;
 }
 

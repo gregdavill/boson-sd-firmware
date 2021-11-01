@@ -7,7 +7,9 @@ OBJECTS=main.o \
 		time.o 	\
 		ff.o \
 		ffunicode.o \
-		sdcard.o
+		sdcard.o \
+		cache.o \
+		rb_tree.o
 	
 
 # boson.o flirCRC.o Serializer_BuiltIn.o 

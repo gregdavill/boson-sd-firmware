@@ -104,10 +104,6 @@ int main(int i, char **c)
 
 	uint32_t wait = 5000;
 
-	//if(!sdphy_card_detect_read()){
-	//	sdcard_init();
-	//}
-
 	FATFS FatFs;		/* FatFs work area needed for each volume */
 	FIL Fil;			/* File object needed for each open file */
 
@@ -141,7 +137,7 @@ int main(int i, char **c)
 
 		memset(ptr, 1*1024*1024, 0xFF);
 
-		f_mkdir("test");
+		f_mkdir("test0");
 
 		for( int i = 0; i < 5000; i++){
 			
@@ -152,7 +148,7 @@ int main(int i, char **c)
 			t = timer1_value_read();
 
 			char name[32];
-			sprintf(name, "test/output%06u.bin", i);
+			sprintf(name, "test0/IMG_%04u.RAW", i);
 
 			printf("f_open() filename=%s -", name);
 

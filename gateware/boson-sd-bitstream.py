@@ -137,7 +137,7 @@ class Boson_SoC(SoCCore):
 
         self.platform = platform = boson_frame_grabber_r0d3.Platform()
 
-        sys_clk_freq = 82.5e6
+        sys_clk_freq = 75e6
         SoCCore.__init__(
             self,
             platform,
@@ -167,7 +167,19 @@ class Boson_SoC(SoCCore):
 
         # Leds -------------------------------------------------------------------------------------
         leds = platform.request_all("user_led")
-        self.submodules.leds = LedChaser(pads=leds, sys_clk_freq=sys_clk_freq)
+        led_pad = Signal(1)
+        self.submodules.leds = LedChaser(pads=led_pad, sys_clk_freq=sys_clk_freq)
+
+        uart_led = uart.UARTPads()
+        self.submodules.uart1_phy = uart.UARTPHY(
+            pads     = uart_led,
+            clk_freq = self.sys_clk_freq,
+            baudrate = 1000000)
+        self.submodules.uart1 = uart.UART(self.uart1_phy,
+            tx_fifo_depth = 8,
+            rx_fifo_depth = 8)
+        self.comb += leds.eq(uart_led.tx)
+
 
         # SPI Flash --------------------------------------------------------------------------------
         from litespi.modules import MX25R1635F
