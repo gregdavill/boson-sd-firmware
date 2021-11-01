@@ -89,9 +89,8 @@ int main(int i, char **c)
 	uart_init();
 #endif
 
-	time_init();
-
-	msleep(25);
+	
+	busy_wait(25);
 	 
 	printf("\e[92;1m    - Boson SD Frame Grabber - \e[0m\n");
  	printf("\n (c) Copyright 2021 Greg Davill \n");
@@ -121,6 +120,8 @@ int main(int i, char **c)
 	uint8_t* ptr = HYPERRAM_BASE;
 	uint8_t buff[128];
 
+	unsigned int t = 0;
+
 	fr = f_mount(&FatFs, "", 1);		/* Give a work area to the default drive */
 
 	printf("f_mount()=%u, %u\n", fr, bw);
@@ -138,36 +139,59 @@ int main(int i, char **c)
 			fr = f_close(&Fil);							/* Close the file */
 		}
 
+		memset(ptr, 1*1024*1024, 0xFF);
 
-		fr = f_open(&Fil, "output.bin", FA_WRITE | FA_CREATE_ALWAYS);	/* Open a file */
-		printf("f_open()=%u\n", fr);
+		f_mkdir("test");
 
-		fr = f_expand(&Fil, 1*1024*1024, 1);
-		printf("f_expand()=%u\n", fr);
-
-		if (fr == FR_OK) {
-
-			if(0){
-			/* Get physical location of the file data */
-			DWORD drv = Fil.obj.fs->pdrv;
-			DWORD lba = Fil.obj.fs->database + Fil.obj.fs->csize * (Fil.obj.sclust - 2);
-
-			/* Write 2048 sectors from top of the file at a time */
-			fr = disk_write(drv, ptr, lba, 1024*1024 / 512);
-			}
-			else{
-				fr  = f_write(&Fil, ptr, 1*1024*1024, &br);
-			}
+		for( int i = 0; i < 5000; i++){
 			
-			printf("f_write()=%u %u\n", fr, br);
+			timer1_en_write(0);
+			timer1_reload_write(-1);
+			timer1_en_write(1);
+			timer1_update_value_write(1);
+			t = timer1_value_read();
+
+			char name[32];
+			sprintf(name, "test/output%06u.bin", i);
+
+			printf("f_open() filename=%s -", name);
+
+			fr = f_open(&Fil, name, FA_WRITE | FA_CREATE_ALWAYS);	/* Open a file */
+			
 			if (fr == FR_OK) {
 
-			}
-			fr = f_close(&Fil);	 /* Close the file */
-		}
-	}
+				if(0){
+					fr = f_expand(&Fil, 1*1024*1024, 1);
+				//	printf("f_expand()=%u\n", fr);
+					
+					/* Get physical location of the file data */
+					DWORD drv = Fil.obj.fs->pdrv;
+					DWORD lba = Fil.obj.fs->database + Fil.obj.fs->csize * (Fil.obj.sclust - 2);
 
-	printf("Done!");
+					/* Write 2048 sectors from top of the file at a time */
+					fr = disk_write(drv, ptr, lba, 1024*1024 / 512);
+				}
+				else{
+					fr  = f_write(&Fil, ptr, 1*1024*1024, &br);
+				}
+				
+				//printf("f_write()=%u %u\n", fr, br);
+				if (fr == FR_OK) {
+
+				}
+				fr = f_close(&Fil);	 /* Close the file */
+			}else{
+				printf("f_open()=%u - ", fr);
+			}
+
+			timer1_update_value_write(1);
+			t = t - timer1_value_read();
+
+			t /= (CONFIG_CLOCK_FREQUENCY / (int)1e6);
+			printf(" \e[92;1m[%01lu.%06lu]\e[0m\n", t / (int)1e6 , t % (int)1e6);
+		}
+
+	}
 
 	
 
