@@ -23,6 +23,7 @@
 #include "ff.h"			/* Declarations of FatFs API */
 #include "diskio.h"		/* Declarations of device I/O functions */
 
+#include <generated/csr.h>
 
 /*--------------------------------------------------------------------------
 
@@ -3648,15 +3649,25 @@ FRESULT f_mount (
 /*-----------------------------------------------------------------------*/
 /* Open or Create a File                                                 */
 /*-----------------------------------------------------------------------*/
-
 FRESULT f_open (
 	FIL* fp,			/* Pointer to the blank file object */
 	const TCHAR* path,	/* Pointer to the file name */
 	BYTE mode			/* Access mode and open mode flags */
 )
 {
+	DIR dj = {0};
+	return f_open_ex(fp, path, mode, &dj);
+}
+
+FRESULT f_open_ex (
+	FIL* fp,			/* Pointer to the blank file object */
+	const TCHAR* path,	/* Pointer to the file name */
+	BYTE mode,			/* Access mode and open mode flags */
+	DIR* dp             /* Pointer to dir object */
+)
+{
 	FRESULT res;
-	DIR dj;
+	//DIR dj;
 	FATFS *fs;
 #if !FF_FS_READONLY
 	DWORD cl, bcs, clst, tm;
@@ -3667,17 +3678,32 @@ FRESULT f_open (
 
 
 	if (!fp) return FR_INVALID_OBJECT;
+	if (!dp) return FR_INVALID_OBJECT;
 
 	/* Get logical drive number */
 	mode &= FF_FS_READONLY ? FA_READ : FA_READ | FA_WRITE | FA_CREATE_ALWAYS | FA_CREATE_NEW | FA_OPEN_ALWAYS | FA_OPEN_APPEND;
 	res = mount_volume(&path, &fs, mode);
 	if (res == FR_OK) {
-		dj.obj.fs = fs;
 		INIT_NAMBUF(fs);
-		res = follow_path(&dj, path);	/* Follow the file path */
+		//if(dp->obj.fs == 0){
+			dp->obj.fs = fs;
+			printf(".");
+			timer1_update_value_write(1);
+			uint32_t t = timer1_value_read();
+			res = follow_path(dp, path);	/* Follow the file path */
+
+			printf("d:%08x ", dp->obj.sclust);
+			timer1_update_value_write(1);
+			t = t - timer1_value_read();
+
+			t /= (75000000UL / (int)1e6);
+			printf(" \e[92;1m[%01lu.%06lu]\e[0m - ", t / (int)1e6 , t % (int)1e6);
+		//}
+		
+
 #if !FF_FS_READONLY	/* Read/Write configuration */
 		if (res == FR_OK) {
-			if (dj.fn[NSFLAG] & NS_NONAME) {	/* Origin directory itself? */
+			if (dp->fn[NSFLAG] & NS_NONAME) {	/* Origin directory itself? */
 				res = FR_INVALID_NAME;
 			}
 #if FF_FS_LOCK != 0
@@ -3693,13 +3719,13 @@ FRESULT f_open (
 #if FF_FS_LOCK != 0
 					res = enq_lock() ? dir_register(&dj) : FR_TOO_MANY_OPEN_FILES;
 #else
-					res = dir_register(&dj);
+					res = dir_register(dp);
 #endif
 				}
 				mode |= FA_CREATE_ALWAYS;		/* File is created */
 			}
 			else {								/* Any object with the same name is already existing */
-				if (dj.obj.attr & (AM_RDO | AM_DIR)) {	/* Cannot overwrite it (R/O or DIR) */
+				if (dp->obj.attr & (AM_RDO | AM_DIR)) {	/* Cannot overwrite it (R/O or DIR) */
 					res = FR_DENIED;
 				} else {
 					if (mode & FA_CREATE_NEW) res = FR_EXIST;	/* Cannot create as new file */
@@ -3717,7 +3743,7 @@ FRESULT f_open (
 					fs->dirbuf[XDIR_Attr] = AM_ARC;
 					st_dword(fs->dirbuf + XDIR_CrtTime, GET_FATTIME());
 					fs->dirbuf[XDIR_GenFlags] = 1;
-					res = store_xdir(&dj);
+					res = store_xdir(dp);
 					if (res == FR_OK && fp->obj.sclust != 0) {	/* Remove the cluster chain if exist */
 						res = remove_chain(&fp->obj, fp->obj.sclust, 0);
 						fs->last_clst = fp->obj.sclust - 1;		/* Reuse the cluster hole */
@@ -3727,16 +3753,16 @@ FRESULT f_open (
 				{
 					/* Set directory entry initial state */
 					tm = GET_FATTIME();					/* Set created time */
-					st_dword(dj.dir + DIR_CrtTime, tm);
-					st_dword(dj.dir + DIR_ModTime, tm);
-					cl = ld_clust(fs, dj.dir);			/* Get current cluster chain */
-					dj.dir[DIR_Attr] = AM_ARC;			/* Reset attribute */
-					st_clust(fs, dj.dir, 0);			/* Reset file allocation info */
-					st_dword(dj.dir + DIR_FileSize, 0);
+					st_dword(dp->dir + DIR_CrtTime, tm);
+					st_dword(dp->dir + DIR_ModTime, tm);
+					cl = ld_clust(fs, dp->dir);			/* Get current cluster chain */
+					dp->dir[DIR_Attr] = AM_ARC;			/* Reset attribute */
+					st_clust(fs, dp->dir, 0);			/* Reset file allocation info */
+					st_dword(dp->dir + DIR_FileSize, 0);
 					fs->wflag = 1;
 					if (cl != 0) {						/* Remove the cluster chain if exist */
 						sc = fs->winsect;
-						res = remove_chain(&dj.obj, cl, 0);
+						res = remove_chain(&dp->obj, cl, 0);
 						if (res == FR_OK) {
 							res = move_window(fs, sc);
 							fs->last_clst = cl - 1;		/* Reuse the cluster hole */
@@ -3747,10 +3773,10 @@ FRESULT f_open (
 		}
 		else {	/* Open an existing file */
 			if (res == FR_OK) {					/* Is the object exsiting? */
-				if (dj.obj.attr & AM_DIR) {		/* File open against a directory */
+				if (dp->obj.attr & AM_DIR) {		/* File open against a directory */
 					res = FR_NO_FILE;
 				} else {
-					if ((mode & FA_WRITE) && (dj.obj.attr & AM_RDO)) { /* Write mode open against R/O file */
+					if ((mode & FA_WRITE) && (dp->obj.attr & AM_RDO)) { /* Write mode open against R/O file */
 						res = FR_DENIED;
 					}
 				}
@@ -3759,18 +3785,18 @@ FRESULT f_open (
 		if (res == FR_OK) {
 			if (mode & FA_CREATE_ALWAYS) mode |= FA_MODIFIED;	/* Set file change flag if created or overwritten */
 			fp->dir_sect = fs->winsect;			/* Pointer to the directory entry */
-			fp->dir_ptr = dj.dir;
+			fp->dir_ptr = dp->dir;
 #if FF_FS_LOCK != 0
-			fp->obj.lockid = inc_lock(&dj, (mode & ~FA_READ) ? 1 : 0);	/* Lock the file for this session */
+			fp->obj.lockid = inc_lock(dp, (mode & ~FA_READ) ? 1 : 0);	/* Lock the file for this session */
 			if (fp->obj.lockid == 0) res = FR_INT_ERR;
 #endif
 		}
 #else		/* R/O configuration */
 		if (res == FR_OK) {
-			if (dj.fn[NSFLAG] & NS_NONAME) {	/* Is it origin directory itself? */
+			if (dp->fn[NSFLAG] & NS_NONAME) {	/* Is it origin directory itself? */
 				res = FR_INVALID_NAME;
 			} else {
-				if (dj.obj.attr & AM_DIR) {		/* Is it a directory? */
+				if (dp->obj.attr & AM_DIR) {		/* Is it a directory? */
 					res = FR_NO_FILE;
 				}
 			}
@@ -3780,15 +3806,15 @@ FRESULT f_open (
 		if (res == FR_OK) {
 #if FF_FS_EXFAT
 			if (fs->fs_type == FS_EXFAT) {
-				fp->obj.c_scl = dj.obj.sclust;							/* Get containing directory info */
-				fp->obj.c_size = ((DWORD)dj.obj.objsize & 0xFFFFFF00) | dj.obj.stat;
-				fp->obj.c_ofs = dj.blk_ofs;
+				fp->obj.c_scl = dp->obj.sclust;							/* Get containing directory info */
+				fp->obj.c_size = ((DWORD)dp->obj.objsize & 0xFFFFFF00) | dp->obj.stat;
+				fp->obj.c_ofs = dp->blk_ofs;
 				init_alloc_info(fs, &fp->obj);
 			} else
 #endif
 			{
-				fp->obj.sclust = ld_clust(fs, dj.dir);					/* Get object allocation info */
-				fp->obj.objsize = ld_dword(dj.dir + DIR_FileSize);
+				fp->obj.sclust = ld_clust(fs, dp->dir);					/* Get object allocation info */
+				fp->obj.objsize = ld_dword(dp->dir + DIR_FileSize);
 			}
 #if FF_USE_FASTSEEK
 			fp->cltbl = 0;		/* Disable fast seek mode */

@@ -122,58 +122,80 @@ int main(int i, char **c)
 
 	printf("f_mount()=%u, %u\n", fr, bw);
 	if (fr == FR_OK) {
-	
-		fr = f_open(&Fil, "hello.txt", FA_READ);	/* Open a file */
-		printf("f_open()=%u, %u\n", fr, bw);
-		if (fr == FR_OK) {
-			fr = f_read(&Fil, buff, 128, &br);
-			
-			printf("f_read()=%u %u\n", fr, br);
-			if (fr == FR_OK) {
-				dump_bytes(buff, br, 0);
+
+
+		/* Find new dir and create */
+		int dir_cnt = 0;
+
+		FRESULT res;
+		DIR dir;
+		UINT i;
+		static FILINFO fno;
+		char path[32] = "/";
+
+		res = f_opendir(&dir, "/");                       /* Open the directory */
+		if (res == FR_OK) {
+			for (;;) {
+				res = f_readdir(&dir, &fno);   
+				if (res != FR_OK || fno.fname[0] == 0) break;  /* Break on error or end of dir */
+				if (fno.fattrib & AM_DIR) {                    /* It is a directory */
+					printf("%s\n", fno.fname);
+				} else {                                       /* It is a file. */
+					printf("%s\n", fno.fname);
+				}
 			}
-			fr = f_close(&Fil);							/* Close the file */
+			f_closedir(&dir);
+		}else{
+			printf("f_opendir = %u\n", res);
 		}
+		printf("dir_cnt = %u\n", dir_cnt);
+		dir_cnt = 9;
 
-		memset(ptr, 1*1024*1024, 0xFF);
+		sprintf(path, "BSN%04u", dir_cnt);
+		f_mkdir(path);
 
-		f_mkdir("test0");
+		timer1_en_write(0);
+		timer1_reload_write(-1);
+		timer1_en_write(1);
 
-		for( int i = 0; i < 5000; i++){
+		for( int i = 0; i < 50; i++){
+
 			
-			timer1_en_write(0);
-			timer1_reload_write(-1);
-			timer1_en_write(1);
 			timer1_update_value_write(1);
 			t = timer1_value_read();
 
 			char name[32];
-			sprintf(name, "test0/IMG_%04u.RAW", i);
+			sprintf(name, "%s/IMG_%04u.RAW", path, i);
 
 			printf("f_open() filename=%s -", name);
 
+			/* File open "hack". We always want to create a new file, so we skip searching entire 
+			 * directory listing for existing file. Instead we capture the last directory cluster,
+			 * This is fed back to the f_open_ex function so that we can quickly append a new file 
+			 * to the dir.
+			 * Note that this will break if you try to open a file which already exists. */
 			fr = f_open(&Fil, name, FA_WRITE | FA_CREATE_ALWAYS);	/* Open a file */
 			
 			if (fr == FR_OK) {
+				fr = f_expand(&Fil, 640*1024, 1);
+				if(fr == FR_OK){
+					/* Accessing the contiguous file via low-level disk functions */
+					printf(".");
 
-				if(0){
-					fr = f_expand(&Fil, 1*1024*1024, 1);
-				//	printf("f_expand()=%u\n", fr);
-					
 					/* Get physical location of the file data */
-					DWORD drv = Fil.obj.fs->pdrv;
-					DWORD lba = Fil.obj.fs->database + Fil.obj.fs->csize * (Fil.obj.sclust - 2);
+					WORD drv = Fil.obj.fs->pdrv;
+					LBA_t lba = Fil.obj.fs->database + Fil.obj.fs->csize * (Fil.obj.sclust - 2);
 
-					/* Write 2048 sectors from top of the file at a time */
-					fr = disk_write(drv, ptr, lba, 1024*1024 / 512);
+					/* Write 1280 sectors from top of the file at a time */
+					res = disk_write(drv, ptr, lba, 640*1024 / 512);
 				}
 				else{
-					fr  = f_write(&Fil, ptr, 1*1024*1024, &br);
+					fr  = f_write(&Fil, ptr, 640*1024, &br);
 				}
-				
+			
 				//printf("f_write()=%u %u\n", fr, br);
-				if (fr == FR_OK) {
-
+				if (fr != FR_OK) {
+					printf("f_write()=%u - ", fr);
 				}
 				fr = f_close(&Fil);	 /* Close the file */
 			}else{

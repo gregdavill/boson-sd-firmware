@@ -31,7 +31,7 @@ static rb_red_blk_tree rbTree_address;
 /* Note head points to head and tail */
 static rb_red_blk_node sd_cache_list_head;
 
-#define SD_CACHE_NODES 1500
+#define SD_CACHE_NODES 250
 static const uint32_t sd_cache_rb_nodes_total = SD_CACHE_NODES;
 static rb_red_blk_node sd_cache_rb_nodes[SD_CACHE_NODES];
 static rb_red_blk_node* sd_cache_rb_nodes_list = 0;
@@ -179,7 +179,7 @@ bool sd_cache_read(void* pData, uint32_t ReadAddr, uint32_t NumOfBlocks) {
 	struct cache_block* cache_object = 0;
 
 	if (sd_cache_locate(ReadAddr, &cache_object)) {
-		printf("'");
+		//printf("'");
 		memcpy(pData, cache_object->data, 512);
 		return true;
 	}
@@ -199,10 +199,10 @@ bool sd_cache_create(void* pData, uint32_t ReadAddr, uint32_t NumOfBlocks) {
 	/* Update */
 	if (sd_cache_locate(ReadAddr, &cache_object)) {
 		memcpy(cache_object->data, pData, 512);
-		printf(".");
+		//printf(".");
 		return true;
 	} else if (sd_cache_new(ReadAddr, &cache_object)) {
-		printf("-");
+		//printf("-");
 		memcpy(cache_object->data, pData, 512);
 		return true;
 	}
@@ -222,7 +222,7 @@ bool sd_cache_update(void* pData, uint32_t ReadAddr, uint32_t NumOfBlocks) {
 
 	/* Update */
 	if (sd_cache_locate(ReadAddr, &cache_object)) {
-		printf(",");
+		//printf(",");
 		memcpy(cache_object->data, pData, 512);
 		return true;
 	}

@@ -31,7 +31,7 @@
 #endif
 
 #ifndef SDCARD_CLK_FREQ
-#define SDCARD_CLK_FREQ 25000000
+#define SDCARD_CLK_FREQ 41000000
 #endif
 
 /* MMC card type flags (MMC_GET_TYPE) */
@@ -706,7 +706,7 @@ DSTATUS disk_initialize(BYTE pdrv)
 	CardType = ty;				   /* Save card type */
 	bswap_cp(&CardInfo[32], resp); /* Save OCR */
 
-	sdcard_set_clk_freq(SDCARD_CLK_FREQ, 1);
+	sdcard_set_clk_freq((unsigned long)20e6, 1);
 
 	/*---- Card is 'ready' state ----*/
 
@@ -754,6 +754,9 @@ DSTATUS disk_initialize(BYTE pdrv)
 	if (sdcard_switch(SD_SWITCH_SWITCH, SD_GROUP_ACCESSMODE, SD_SPEED_SDR25) != SD_OK)
 		return 0;
 
+
+	sdcard_set_clk_freq((unsigned long)50e6, 1);
+
 	/* Send SCR */
 	/* FIXME: add scr decoding (optional) */
 	if (sdcard_app_cmd(CardRCA) != SD_OK)
@@ -790,7 +793,7 @@ DRESULT disk_read(BYTE drv, BYTE *buff, LBA_t sector, UINT count) {
 		if(sd_cache_read(buff, sector, 1))
 		{
 			/* Found a block in our cache */
-			/* The call already performs a capy into our buffer */
+			/* The call already performs a copy into our buffer */
 			return RES_OK;
 		}
 	}

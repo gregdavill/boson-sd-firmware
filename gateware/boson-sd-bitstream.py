@@ -137,7 +137,7 @@ class Boson_SoC(SoCCore):
 
         self.platform = platform = boson_frame_grabber_r0d3.Platform()
 
-        sys_clk_freq = 75e6
+        sys_clk_freq = 80e6
         SoCCore.__init__(
             self,
             platform,
