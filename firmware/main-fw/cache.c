@@ -31,7 +31,7 @@ static rb_red_blk_tree rbTree_address;
 /* Note head points to head and tail */
 static rb_red_blk_node sd_cache_list_head;
 
-#define SD_CACHE_NODES 250
+#define SD_CACHE_NODES 1000
 static const uint32_t sd_cache_rb_nodes_total = SD_CACHE_NODES;
 static rb_red_blk_node sd_cache_rb_nodes[SD_CACHE_NODES];
 static rb_red_blk_node* sd_cache_rb_nodes_list = 0;
@@ -91,6 +91,8 @@ void sd_cache_lru_update(rb_red_blk_node* node) {
 
 /* Return a free memory block */
 void* sd_cache_malloc(int core_node) {
+
+	sd_cache_rb_nodes_used++;
 
 	/* Take Last node in LRU list */
 	rb_red_blk_node* newNode = sd_cache_list_head.prev;
@@ -201,7 +203,7 @@ bool sd_cache_create(void* pData, uint32_t ReadAddr, uint32_t NumOfBlocks) {
 		memcpy(cache_object->data, pData, 512);
 		//printf(".");
 		return true;
-	} else if (sd_cache_new(ReadAddr, &cache_object)) {
+	} else if ((sd_cache_rb_nodes_used < SD_CACHE_NODES) && sd_cache_new(ReadAddr, &cache_object)) {
 		//printf("-");
 		memcpy(cache_object->data, pData, 512);
 		return true;

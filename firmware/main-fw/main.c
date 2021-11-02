@@ -149,7 +149,7 @@ int main(int i, char **c)
 			printf("f_opendir = %u\n", res);
 		}
 		printf("dir_cnt = %u\n", dir_cnt);
-		dir_cnt = 9;
+		dir_cnt = 10;
 
 		sprintf(path, "BSN%04u", dir_cnt);
 		f_mkdir(path);
@@ -158,7 +158,7 @@ int main(int i, char **c)
 		timer1_reload_write(-1);
 		timer1_en_write(1);
 
-		for( int i = 0; i < 50; i++){
+		for( int i = 0; i < 9999; i++){
 
 			
 			timer1_update_value_write(1);
@@ -176,8 +176,10 @@ int main(int i, char **c)
 			 * Note that this will break if you try to open a file which already exists. */
 			fr = f_open(&Fil, name, FA_WRITE | FA_CREATE_ALWAYS);	/* Open a file */
 			
+			DWORD filesize = 1024;
+
 			if (fr == FR_OK) {
-				fr = f_expand(&Fil, 640*1024, 1);
+				fr = f_expand(&Fil, filesize, 1);
 				if(fr == FR_OK){
 					/* Accessing the contiguous file via low-level disk functions */
 					printf(".");
@@ -187,10 +189,10 @@ int main(int i, char **c)
 					LBA_t lba = Fil.obj.fs->database + Fil.obj.fs->csize * (Fil.obj.sclust - 2);
 
 					/* Write 1280 sectors from top of the file at a time */
-					res = disk_write(drv, ptr, lba, 640*1024 / 512);
+					res = disk_write(drv, ptr, lba, filesize / 512);
 				}
 				else{
-					fr  = f_write(&Fil, ptr, 640*1024, &br);
+					fr  = f_write(&Fil, ptr, filesize, &br);
 				}
 			
 				//printf("f_write()=%u %u\n", fr, br);
