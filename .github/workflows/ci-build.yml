@@ -25,7 +25,7 @@ jobs:
       - name: Patch
         working-directory: ./gateware/deps
         run: | 
-          git apply --verbose --directory=gateware/deps/001-sdcard-clk-dly.patch
+          git apply --verbose --directory=gateware/deps/litesdcard 001-sdcard-clk-dly.patch
 
       # Build
       - name: Build project
