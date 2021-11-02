@@ -22,6 +22,11 @@ jobs:
       - name: Configure python
         run: python3 -m pip install setuptools wheel meson ninja 
 
+      - name: Patch
+        working-directory: ./gateware/deps
+        run: | 
+          git apply --verbose --directory=gateware/deps/001-sdcard-clk-dly.patch
+
       # Build
       - name: Build project
         run: |
