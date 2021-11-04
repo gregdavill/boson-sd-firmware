@@ -179,22 +179,9 @@ int main(int i, char **c)
 			DWORD filesize = 1024;
 
 			if (fr == FR_OK) {
-				fr = f_expand(&Fil, filesize, 1);
-				if(fr == FR_OK){
-					/* Accessing the contiguous file via low-level disk functions */
-					printf(".");
-
-					/* Get physical location of the file data */
-					WORD drv = Fil.obj.fs->pdrv;
-					LBA_t lba = Fil.obj.fs->database + Fil.obj.fs->csize * (Fil.obj.sclust - 2);
-
-					/* Write 1280 sectors from top of the file at a time */
-					res = disk_write(drv, ptr, lba, filesize / 512);
-				}
-				else{
-					fr  = f_write(&Fil, ptr, filesize, &br);
-				}
-			
+				fr = f_expand(&Fil, filesize, 1);	
+				fr = f_write(&Fil, ptr, filesize, &br);
+				
 				//printf("f_write()=%u %u\n", fr, br);
 				if (fr != FR_OK) {
 					printf("f_write()=%u - ", fr);
