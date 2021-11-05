@@ -156,7 +156,9 @@ class Boson_SoC(SoCCore):
         platform.toolchain.build_template[0] = "yosys -q -l {build_name}.rpt {build_name}.ys"
         platform.toolchain.build_template[1] += f" --log {platform.name}-nextpnr.log --router router1"
         platform.toolchain.build_template[1] += f" --report {platform.name}-timing.json"
-        platform.toolchain.yosys_template[-1] += ' '  # abc2/nowidelut generally give higher freq
+        platform.toolchain.yosys_template.insert(-1, "scratchpad -copy abc9.script.flow3 abc9.script")
+        platform.toolchain.yosys_template.insert(-1, "scratchpad -set abc9.D {}".format(int((1e12/sys_clk_freq)/2)))
+        platform.toolchain.yosys_template[-1] += ' -abc9'  # abc2/nowidelut generally give higher freq
 
         # crg -------------------------------------------------------------------------------------
         self.submodules.crg = _CRG(platform, sys_clk_freq)

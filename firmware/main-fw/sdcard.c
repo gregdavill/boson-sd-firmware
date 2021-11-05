@@ -331,7 +331,7 @@ int sdcard_write_multiple_block(unsigned int blockaddr, unsigned int blockcnt) {
 	printf("CMD25: WRITE_MULTIPLE_BLOCK\n");
 #endif
 
-	sdcard_app_set_wr_block_erase_count(blockcnt);
+	//sdcard_app_set_wr_block_erase_count(blockcnt);
 
 	sdcore_block_length_write(512);
 	sdcore_block_count_write(blockcnt);

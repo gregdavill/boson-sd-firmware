@@ -207,7 +207,7 @@ int main(int i, char **c)
 			DWORD filesize = 640*1024;
 
 			if (fr == FR_OK) {
-				//fr = f_expand(&Fil, filesize, 0);	
+				fr = f_expand(&Fil, filesize, 1);	
 				fr = f_write(&Fil, ptr, filesize, &br);
 				
 				//printf("f_write()=%u %u\n", fr, br);
