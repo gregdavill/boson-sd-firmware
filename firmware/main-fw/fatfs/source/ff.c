@@ -3687,12 +3687,12 @@ FRESULT f_open_ex (
 		INIT_NAMBUF(fs);
 		//if(dp->obj.fs == 0){
 			dp->obj.fs = fs;
-			printf(".");
+			//printf(".");
 			timer1_update_value_write(1);
 			uint32_t t = timer1_value_read();
 			res = follow_path(dp, path);	/* Follow the file path */
 
-			printf("d:%08x ", dp->obj.sclust);
+			//printf("d:%08x ", dp->obj.sclust);
 			timer1_update_value_write(1);
 			t = t - timer1_value_read();
 

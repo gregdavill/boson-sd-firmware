@@ -31,7 +31,7 @@ static rb_red_blk_tree rbTree_address;
 /* Note head points to head and tail */
 static rb_red_blk_node sd_cache_list_head;
 
-#define SD_CACHE_NODES 1000
+#define SD_CACHE_NODES 200
 static const uint32_t sd_cache_rb_nodes_total = SD_CACHE_NODES;
 static rb_red_blk_node sd_cache_rb_nodes[SD_CACHE_NODES];
 static rb_red_blk_node* sd_cache_rb_nodes_list = 0;

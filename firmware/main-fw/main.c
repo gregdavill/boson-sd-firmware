@@ -13,7 +13,7 @@
 #include <generated/git.h>
 
 
-#include <libfatfs/ff.h>
+#include "fatfs/source/ff.h"
 
 #include <irq.h>
 #include <uart.h>
@@ -22,6 +22,39 @@ uint32_t frame_count = 0;
 
 /* prototypes */
 void isr(void);
+FRESULT scan_folders (char* path,UINT* cnt);
+
+FRESULT scan_folders (
+    char* path,        /* Start node to be scanned (***also used as work area***) */
+	UINT* cnt		/* Count of folders  */
+)
+{
+    FRESULT res;
+    DIR dir;
+    UINT i;
+    FILINFO fno;
+
+
+    res = f_opendir(&dir, path);                       /* Open the directory */
+    if (res == FR_OK) {
+        for (;;) {
+            res = f_readdir(&dir, &fno);                   /* Read a directory item */
+            if (res != FR_OK || fno.fname[0] == 0) break;  /* Break on error or end of dir */
+            if (fno.fattrib & AM_DIR) {
+//                printf("%s %s ", path, fno.fname);
+				UINT _cnt = 0;
+				if(strncmp("BSN", fno.fname, 3) == 0){
+					int c = sscanf(fno.fname, "BSN%04u", &_cnt);
+					if(_cnt > *cnt)
+						*cnt = _cnt;
+				}
+            }
+        }
+        f_closedir(&dir);
+    }
+
+    return res;
+}
 
 
 #define NUMBER_OF_BYTES_ON_A_LINE 16
@@ -104,8 +137,8 @@ int main(int i, char **c)
 
 	uint32_t wait = 5000;
 
-	FATFS FatFs;		/* FatFs work area needed for each volume */
-	FIL Fil;			/* File object needed for each open file */
+	static FATFS FatFs;		/* FatFs work area needed for each volume */
+	static FIL Fil;			/* File object needed for each open file */
 
 	printf("&FatFs = %08x\n", &FatFs);
 	printf("&Fil = %08x\n", &Fil);
@@ -114,7 +147,6 @@ int main(int i, char **c)
 	FRESULT fr;
 
 	uint8_t* ptr = HYPERRAM_BASE;
-	uint8_t buff[128];
 
 	unsigned int t = 0;
 
@@ -125,61 +157,57 @@ int main(int i, char **c)
 
 
 		/* Find new dir and create */
-		int dir_cnt = 0;
+		UINT dir_cnt = 0;
+		fr = f_mkdir("DCIM");
+		printf("f_mkdir() = %u\n",fr);
 
 		FRESULT res;
-		DIR dir;
-		UINT i;
-		static FILINFO fno;
-		char path[32] = "/";
+		char path[255];
 
-		res = f_opendir(&dir, "/");                       /* Open the directory */
-		if (res == FR_OK) {
-			for (;;) {
-				res = f_readdir(&dir, &fno);   
-				if (res != FR_OK || fno.fname[0] == 0) break;  /* Break on error or end of dir */
-				if (fno.fattrib & AM_DIR) {                    /* It is a directory */
-					printf("%s\n", fno.fname);
-				} else {                                       /* It is a file. */
-					printf("%s\n", fno.fname);
-				}
-			}
-			f_closedir(&dir);
-		}else{
-			printf("f_opendir = %u\n", res);
-		}
+        res = scan_folders("DCIM/", &dir_cnt);
+    	
+		// res = f_opendir(&dir, "/");                       /* Open the directory */
+		// if (res == FR_OK) {
+		// 	for (;;) {
+		// 		res = f_readdir(&dir, &fno);   
+		// 		if (res != FR_OK || fno.fname[0] == 0) break;  /* Break on error or end of dir */
+		// 		if (fno.fattrib & AM_DIR) {                    /* It is a directory */
+		// 			printf("%s\n", fno.fname);
+		// 		} else {                                       /* It is a file. */
+		// 			printf("%s\n", fno.fname);
+		// 		}
+		// 	}
+		// 	f_closedir(&dir);
+		// }else{
+		// 	printf("f_opendir = %u\n", res);
+		// }
+		dir_cnt += 1;
 		printf("dir_cnt = %u\n", dir_cnt);
-		dir_cnt = 10;
 
-		sprintf(path, "BSN%04u", dir_cnt);
+		sprintf(path, "/DCIM/BSN%04u", dir_cnt);
 		f_mkdir(path);
 
 		timer1_en_write(0);
 		timer1_reload_write(-1);
 		timer1_en_write(1);
 
-		for( int i = 0; i < 9999; i++){
+		for( unsigned int i = 0; i < 10; i++){
 
 			
 			timer1_update_value_write(1);
 			t = timer1_value_read();
 
-			char name[32];
+			char name[64];
 			sprintf(name, "%s/IMG_%04u.RAW", path, i);
 
 			printf("f_open() filename=%s -", name);
 
-			/* File open "hack". We always want to create a new file, so we skip searching entire 
-			 * directory listing for existing file. Instead we capture the last directory cluster,
-			 * This is fed back to the f_open_ex function so that we can quickly append a new file 
-			 * to the dir.
-			 * Note that this will break if you try to open a file which already exists. */
 			fr = f_open(&Fil, name, FA_WRITE | FA_CREATE_ALWAYS);	/* Open a file */
 			
-			DWORD filesize = 1024;
+			DWORD filesize = 640*1024;
 
 			if (fr == FR_OK) {
-				fr = f_expand(&Fil, filesize, 1);	
+				//fr = f_expand(&Fil, filesize, 0);	
 				fr = f_write(&Fil, ptr, filesize, &br);
 				
 				//printf("f_write()=%u %u\n", fr, br);
