@@ -58,7 +58,8 @@ class Boson(Module, AutoCSR):
         self.vsync = pads.vsync
         self.data_valid = pads.valid
 
-        self.submodules.gpio = gpio.GPIOTristate(pads.pwr_en)
+        if hasattr(pads, "pwr_en"):
+            self.submodules.gpio = gpio.GPIOTristate(pads.pwr_en)
 
         self.submodules.uart_phy = uart_phy = uart.UARTPHY(pads, clk_freq, baudrate=921600)
         self.submodules.uart = uart.UART(uart_phy, tx_fifo_depth=4, rx_fifo_depth=128)

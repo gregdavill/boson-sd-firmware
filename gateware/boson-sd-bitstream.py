@@ -137,7 +137,7 @@ class Boson_SoC(SoCCore):
 
         self.platform = platform = boson_frame_grabber_r0d3.Platform()
 
-        sys_clk_freq = 80e6
+        sys_clk_freq = 70e6
         SoCCore.__init__(
             self,
             platform,
@@ -164,6 +164,9 @@ class Boson_SoC(SoCCore):
         # Timers -----------------------------------------------------------------------------------
         self.add_timer(name="timer1")
         self.add_timer(name="timer2")
+
+        # Boson -----------------------------------------------------------------------------------
+        self.submodules.boson = Boson(platform, platform.request("boson"), sys_clk_freq)
 
         # Leds -------------------------------------------------------------------------------------
         leds = platform.request_all("user_led")
