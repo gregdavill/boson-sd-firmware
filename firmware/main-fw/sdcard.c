@@ -31,7 +31,7 @@
 #endif
 
 #ifndef SDCARD_CLK_FREQ
-#define SDCARD_CLK_FREQ 41000000
+#define SDCARD_CLK_FREQ 41000000UL
 #endif
 
 /* MMC card type flags (MMC_GET_TYPE) */
@@ -593,12 +593,12 @@ static int wait_ready(		   /* Returns 1 when card is tran state, otherwise retur
 					  WORD tmr /* Timeout in unit of 1ms */
 )
 {
-	DWORD rc;
+	DWORD rc[4];
 
 	Timer[0] = tmr;
 	while (Timer[0]--)
 	{
-		if (send_cmd(CMD13, (DWORD)CardRCA << 16, 1, &rc) && ((rc & 0x01E00) == 0x00800))
+		if (send_cmd(CMD13, (DWORD)CardRCA << 16, 1, rc) && ((rc[0] & 0x01E00) == 0x00800))
 			break;
 
 		dly_us(1000);
