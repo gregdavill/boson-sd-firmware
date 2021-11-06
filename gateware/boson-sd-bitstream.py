@@ -48,7 +48,7 @@ from rtl.prbs import PRBSStream
 from rtl.wb_streamer import StreamReader, StreamWriter
 from rtl.streamable_hyperram import StreamableHyperRAM
 
-from rtl.video.boson import Boson
+from rtl.video.DMACapture import BosonCapture
 
 
 class _CRG(Module, AutoCSR):
@@ -137,7 +137,7 @@ class Boson_SoC(SoCCore):
 
         self.platform = platform = boson_frame_grabber_r0d3.Platform()
 
-        sys_clk_freq = 70e6
+        platform.sys_clk_freq = sys_clk_freq = 75e6
         SoCCore.__init__(
             self,
             platform,
@@ -167,8 +167,6 @@ class Boson_SoC(SoCCore):
         self.add_timer(name="timer1")
         self.add_timer(name="timer2")
 
-        # Boson -----------------------------------------------------------------------------------
-        self.submodules.boson = Boson(platform, platform.request("boson"), sys_clk_freq)
 
         # Leds -------------------------------------------------------------------------------------
         leds = platform.request_all("user_led")
@@ -205,6 +203,9 @@ class Boson_SoC(SoCCore):
         reader.add_source(self.prbs.source.source, "prbs")
         writer.add_sink(self.prbs.sink.sink, "prbs")
 
+        # Boson -----------------------------------------------------------------------------------
+        self.submodules.boson = BosonCapture(platform, reader)
+        
         # IO/UART ----------------------------------------------------------------------------------
         io = platform.request("io")
         self.submodules.io_oe = GPIOOut(io.oe)

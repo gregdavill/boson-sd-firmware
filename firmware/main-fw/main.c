@@ -133,22 +133,27 @@ int main(int i, char **c)
  	printf("      LiteX git sha1: "LITEX_GIT_SHA1"\n");
 
 	printf("--==========-- \e[1mBoson Init\e[0m ===========--\n");
- 	//boson_init();
+ 	boson_init();
 
-	uint32_t wait = 5000;
 
-	static FATFS FatFs;		/* FatFs work area needed for each volume */
-	static FIL Fil;			/* File object needed for each open file */
+	for(int i = 0; i<10; i++){
+		printf("hres=%u, vres=%u\n", boson_resolution_hres_read(), boson_resolution_vres_read());
+		busy_wait(1000);
+	}
 
-	printf("&FatFs = %08x\n", &FatFs);
-	printf("&Fil = %08x\n", &Fil);
 
+	FATFS FatFs;		/* FatFs work area needed for each volume */
+	FIL Fil;			/* File object needed for each open file */
 	UINT bw, br;
 	FRESULT fr;
 
 	uint8_t* ptr = HYPERRAM_BASE;
 
 	unsigned int t = 0;
+
+	printf("&FatFs = %08x\n", &FatFs);
+	printf("&Fil = %08x\n", &Fil);
+
 
 	fr = f_mount(&FatFs, "", 1);		/* Give a work area to the default drive */
 
@@ -165,27 +170,12 @@ int main(int i, char **c)
 		char path[255];
 
         res = scan_folders("DCIM/", &dir_cnt);
-    	
-		// res = f_opendir(&dir, "/");                       /* Open the directory */
-		// if (res == FR_OK) {
-		// 	for (;;) {
-		// 		res = f_readdir(&dir, &fno);   
-		// 		if (res != FR_OK || fno.fname[0] == 0) break;  /* Break on error or end of dir */
-		// 		if (fno.fattrib & AM_DIR) {                    /* It is a directory */
-		// 			printf("%s\n", fno.fname);
-		// 		} else {                                       /* It is a file. */
-		// 			printf("%s\n", fno.fname);
-		// 		}
-		// 	}
-		// 	f_closedir(&dir);
-		// }else{
-		// 	printf("f_opendir = %u\n", res);
-		// }
 		dir_cnt += 1;
 		printf("dir_cnt = %u\n", dir_cnt);
 
 		sprintf(path, "/DCIM/BSN%04u", dir_cnt);
-		f_mkdir(path);
+		fr = f_mkdir(path);
+		printf("f_mkdir() = %u\n",fr);
 
 		timer1_en_write(0);
 		timer1_reload_write(-1);

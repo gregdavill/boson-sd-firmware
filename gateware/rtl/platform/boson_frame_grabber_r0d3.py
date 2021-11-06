@@ -24,15 +24,15 @@ _io = [
 
     ("boson", 0,
         Subsignal("data", Pins("B17 A13 A9 B11 B2 A2 A3 B4 \
-                                B1  A8  A7 B9  B8 B6 D1 A6"),IOStandard("LVCMOS18"),Misc("SLEWRATE=SLOW")),
-        Subsignal("clk", Pins("A11"),IOStandard("LVCMOS18"),Misc("SLEWRATE=SLOW")),
-        Subsignal("vsync", Pins("B10"),IOStandard("LVCMOS18"),Misc("SLEWRATE=SLOW")),
-        Subsignal("hsync", Pins("A17"),IOStandard("LVCMOS18"),Misc("SLEWRATE=SLOW")),
-        Subsignal("valid", Pins("B18"),IOStandard("LVCMOS18"),Misc("SLEWRATE=SLOW")),
-        Subsignal("tx", Pins("B7"),IOStandard("LVCMOS18"),Misc("SLEWRATE=SLOW")),
-        Subsignal("rx", Pins("A4"),IOStandard("LVCMOS18"),Misc("SLEWRATE=SLOW")),
+                                B1  A8  A7 B9  B8 B6 D1 A6"),IOStandard("LVCMOS18"),Misc("SLEWRATE=FAST")),
+        Subsignal("clk", Pins("A11"),IOStandard("LVCMOS18"),Misc("SLEWRATE=FAST")),
+        Subsignal("vsync", Pins("B10"),IOStandard("LVCMOS18"),Misc("SLEWRATE=FAST")),
+        Subsignal("hsync", Pins("A17"),IOStandard("LVCMOS18"),Misc("SLEWRATE=FAST")),
+        Subsignal("valid", Pins("B18"),IOStandard("LVCMOS18"),Misc("SLEWRATE=FAST")),
+        Subsignal("rx", Pins("B7"),IOStandard("LVCMOS18"),Misc("PULLMODE=UP"),Misc("SLEWRATE=SLOW")),
+        Subsignal("tx", Pins("A4"),IOStandard("LVCMOS18"),Misc("PULLMODE=UP"),Misc("SLEWRATE=SLOW")),
         Subsignal("reset", Pins("C2"),IOStandard("LVCMOS18"),Misc("SLEWRATE=SLOW")),
-        Subsignal("ext_sync", Pins("A16"),IOStandard("LVCMOS18"),Misc("SLEWRATE=SLOW")),
+        Subsignal("ext_sync", Pins("A16"),IOStandard("LVCMOS18"),Misc("SLEWRATE=FAST")),
     ),    
 
     ("io", 0,

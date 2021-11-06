@@ -25,23 +25,23 @@ static void boson_uart_write_array(const uint8_t* array, uint32_t len);
 static uint8_t boson_uart_read(void)
 {
 	uint8_t c;
-	while (dma0_boson_uart_rxempty_read());
-	c = dma0_boson_uart_rxtx_read();
-	dma0_boson_uart_ev_pending_write(UART_EV_RX);
+	while (boson_boson_uart_rxempty_read());
+	c = boson_boson_uart_rxtx_read();
+	boson_boson_uart_ev_pending_write(UART_EV_RX);
 	return c;
 }
 
 static int boson_uart_read_nonblock(void)
 {
-	return (dma0_boson_uart_rxempty_read() == 0);
+	return (boson_boson_uart_rxempty_read() == 0);
 }
 
 static void boson_uart_write(uint8_t c)
 {
     boson_crc = ByteCRC16((int)c, boson_crc);
-	while (dma0_boson_uart_txfull_read());
-	dma0_boson_uart_rxtx_write(c);
-	dma0_boson_uart_ev_pending_write(UART_EV_TX);
+	while (boson_boson_uart_txfull_read());
+	boson_boson_uart_rxtx_write(c);
+	boson_boson_uart_ev_pending_write(UART_EV_TX);
 }
 
 static void boson_uart_write_escaped(uint8_t c)
@@ -72,13 +72,13 @@ static void boson_uart_write_escaped(uint8_t c)
 
 static void boson_uart_init(void)
 {
-	dma0_boson_uart_ev_pending_write(dma0_boson_uart_ev_pending_read());
-	dma0_boson_uart_ev_enable_write(UART_EV_TX | UART_EV_RX);
+	boson_boson_uart_ev_pending_write(boson_boson_uart_ev_pending_read());
+	boson_boson_uart_ev_enable_write(UART_EV_TX | UART_EV_RX);
 }
 
 static void boson_uart_sync(void)
 {
-	while (dma0_boson_uart_txfull_read());
+	while (boson_boson_uart_txfull_read());
 }
 
 
@@ -144,7 +144,7 @@ FLR_RESULT dispatcher_rx(uint8_t* recvData, uint32_t* recvBytes) {
     
     uint32_t len = 0;
 
-    //printf("bsn << ");
+    printf("bsn << ");
     while((++timeout_count < timeout) && (errorCode != R_SUCCESS)){
 
         while(boson_uart_read_nonblock()) {    
@@ -156,7 +156,7 @@ FLR_RESULT dispatcher_rx(uint8_t* recvData, uint32_t* recvBytes) {
                     continue;
             }
 
-            //printf("%02x ", recvData[len]);
+            printf("%02x ", recvData[len]);
             
             if(len > 2){
                 if(recvData[len] == END_FRAME_BYTE){
@@ -180,10 +180,10 @@ FLR_RESULT dispatcher_rx(uint8_t* recvData, uint32_t* recvBytes) {
             }
         }
         
-        msleep(1);
+        busy_wait(1);
     }
 
-//    printf("(%u ms)\n", timeout_count);
+    printf("(%u ms)\n", timeout_count);
 
     return errorCode;
 }
@@ -230,15 +230,16 @@ FLR_RESULT dispatcher(FLR_FUNCTION fnID, const uint8_t *sendData, const uint32_t
 
 void boson_init(void){
 
+    boson_boson_reset_out_write(1);
     boson_uart_init();
-    msleep(3500);
+    busy_wait(4500);
     boson_uart_write(0);
     boson_uart_write(0);
 
 
     /* Ping the camera a few times, takes ~3s after bootup before it will respond */
     FLR_RESULT r = R_UART_RECEIVE_TIMEOUT;
-    for(int tries = 10; tries > 0 && r != R_SUCCESS; tries--){
+    for(int tries = 20; tries > 0 && r != R_SUCCESS; --tries){
         r = dispatcher(BOSON_GETCAMERASN, 0, 0);
     }
 
@@ -254,11 +255,11 @@ void boson_init(void){
         dispatcher(DVO_SETTYPE, (const uint8_t[]){UINT32_LE(0)}, 4); /* Type: COLOUR */
         dispatcher(DVO_APPLYCUSTOMSETTINGS, 0, 0);
         //dispatcher(COLORLUT_SETID, (const uint8_t[]){UINT32_LE(_settings.pallete)}, 4); /* Colour LUT: Ironbow */
-        msleep(10);
+        busy_wait(10);
         dispatcher(COLORLUT_SETCONTROL, (const uint8_t[]){UINT32_LE(1)}, 4);
         dispatcher(GAO_SETAVERAGERSTATE, (const uint8_t[]){UINT32_LE(0)}, 4);
 
-        msleep(500);
+        busy_wait(500);
         dispatcher(BOSON_RUNFFC, 0, 0);
     }
 }

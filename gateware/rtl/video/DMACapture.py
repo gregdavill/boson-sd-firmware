@@ -8,8 +8,6 @@ import shutil
 
 from migen import *
 
-from rtl.platform import butterstick_r1d0
-
 
 from litex.build.generic_platform import *
 from litex.soc.cores.clock import *
@@ -27,71 +25,6 @@ from rtl.video.boson import Boson
 from rtl.video.framer import FrameExtraction
 
 from litevideo.input.analysis import  ResolutionDetection
-
-from litedram.frontend.dma import LiteDRAMDMAWriter
-
-
-class DMAWriterVideo(LiteDRAMDMAWriter):
-    def __init__(self, sdram_port):
-        super().__init__(sdram_port, with_csr=False)
-
-        self._sink = self.sink
-        self.sink  = Endpoint([("data", self.port.data_width)])
-        self.sof = Signal()
-
-        self.wait_sof = Signal()
-
-        self._base   = CSRStorage(32, reset=0)
-        self._length = CSRStorage(32, reset=0)
-        self._enable = CSRStorage(reset=0)
-        self._done   = CSRStatus()
-        self._loop   = CSRStorage(reset=0)
-        self._offset = CSRStatus(32)
-
-        # # #
-
-        shift  = log2_int(self.port.data_width//8)
-        base   = Signal(self.port.address_width)
-        offset = Signal(self.port.address_width)
-        length = Signal(self.port.address_width)
-        self.comb += base.eq(self._base.storage[shift:])
-        self.comb += length.eq(self._length.storage[shift:])
-
-        self.comb += self._offset.status.eq(offset)
-
-        fsm = FSM(reset_state="IDLE")
-        fsm = ResetInserter()(fsm)
-        self.submodules.fsm = fsm
-        self.comb += [
-            fsm.reset.eq(~self._enable.storage),
-            self.wait_sof.eq(fsm.ongoing('IDLE'))
-        ]
-        fsm.act("IDLE",
-            If(self.sof,
-                self.sink.ready.eq(1),
-                NextValue(offset, 0),
-                NextState("RUN"),
-            )
-        )
-        fsm.act("RUN",
-            self._sink.valid.eq(self.sink.valid),
-            self._sink.last.eq(offset == (length - 1)),
-            self._sink.address.eq(base + offset),
-            self._sink.data.eq(self.sink.data),
-            self.sink.ready.eq(self._sink.ready),
-            If(self.sink.valid & self.sink.ready,
-                NextValue(offset, offset + 1),
-                If(self._sink.last,
-                    If(self._loop.storage,
-                        NextValue(offset, 0)
-                    ).Else(
-                        NextState("DONE")
-                    )
-                )
-            )
-        )
-        fsm.act("DONE", self._done.status.eq(1))
-
 
 
 
@@ -119,10 +52,8 @@ class FrameExtraction(Module, AutoCSR):
 
 
 
-class DMAVideoCapture(Module, AutoCSR):
-    def __init__(self, platform, sdram_port):
-
-        self.submodules.dma = dma = DMAWriterVideo(sdram_port)
+class BosonCapture(Module, AutoCSR):
+    def __init__(self, platform, reader):
 
         # Boson video stream
         self.submodules.boson = boson = Boson(platform, platform.request("boson"), platform.sys_clk_freq)
@@ -138,8 +69,8 @@ class DMAVideoCapture(Module, AutoCSR):
             fe.vsync.eq(boson.vsync),
         ]
 
-        # 16bit -> 128bit coverter
-        sc = StrideConverter([('data', 16)], [('data', len(dma.sink.data))], reverse=True)
+        # 16bit -> 32bit coverter
+        sc = StrideConverter([('data', 16)], [('data', 32)], reverse=True)
         self.submodules += ResetInserter()(sc)
         
         # FIFO
@@ -148,21 +79,27 @@ class DMAVideoCapture(Module, AutoCSR):
         fifo = ResetInserter(["pix", "sys"])(fifo)
         self.submodules += fifo
         self.fifo = fifo
-        self.comb += [
-            fifo.sink.data.eq(boson.source.data),
-            fifo.sink.valid.eq(boson.source.valid),
 
-            dma.sof.eq(fe.sof),
-            
-            fifo.reset_pix.eq(dma.wait_sof),
-            fifo.reset_sys.eq(dma.wait_sof),   
-            
-            sc.reset.eq(dma.wait_sof),   
-            dma.port.flush.eq(dma.wait_sof),
-        ]
 
-        self.submodules.pipeline = pipeline = Pipeline(fifo, sc, dma)
-
+        # self.comb += [
+        #     fifo.sink.data.eq(boson.source.data),
+        #     fifo.sink.valid.eq(boson.source.valid),
+        # ]
+        self.submodules.pipeline = pipeline = Pipeline(fifo, sc)
         self.comb += [
             boson.source.connect(pipeline.sink),
         ]
+
+        reader.add_source(sc.source, "boson")
+
+
+#            dma.sof.eq(fe.sof),
+            
+ #           fifo.reset_pix.eq(dma.wait_sof),
+  #          fifo.reset_sys.eq(dma.wait_sof),   
+            
+   #         sc.reset.eq(dma.wait_sof),   
+    #        dma.port.flush.eq(dma.wait_sof),
+
+
+
