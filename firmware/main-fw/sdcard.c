@@ -20,7 +20,7 @@
 #include "fatfs/source/diskio.h" /* Common include file for FatFs and disk I/O layer */
 #include "sdcard.h"
 
-#define USE_CACHE
+//#define USE_CACHE
 
 //#define SDCARD_CMD23_SUPPORT /* SET_BLOCK_COUNT */
 #define SDCARD_CMD18_SUPPORT /* READ_MULTIPLE_BLOCK */
@@ -31,7 +31,7 @@
 #endif
 
 #ifndef SDCARD_CLK_FREQ
-#define SDCARD_CLK_FREQ 41000000UL
+#define SDCARD_CLK_FREQ 30000000UL
 #endif
 
 /* MMC card type flags (MMC_GET_TYPE) */
@@ -540,6 +540,11 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 		/* Wait for DMA Reader to complete */
 		while ((sdmem2block_dma_done_read() & 0x1) == 0);
 
+		if(sdmem2block_dma_done_read() != 1){
+			printf("sdmem2block_dma_done_read() = %04x\n", sdmem2block_dma_done_read());
+
+		}
+
 		/* Stop transmission (Only for multiple block reads) */
 		if (nblocks > 1)
 			sdcard_stop_transmission();
@@ -642,7 +647,9 @@ DSTATUS disk_initialize(BYTE pdrv)
 
 	printf("disk_initialize()\n");
 
+#ifdef USE_CACHE
 	sd_cache_init(HYPERRAM_BASE + HYPERRAM_SIZE/2, HYPERRAM_SIZE/512/2);
+#endif
 
 	/* Set SD clk freq to Initialization frequency */
 	sdcard_set_clk_freq(SDCARD_CLK_FREQ_INIT, 0);
@@ -815,6 +822,9 @@ DRESULT disk_read(BYTE drv, BYTE *buff, LBA_t sector, UINT count) {
 
 
 DRESULT disk_write (BYTE pdrv, const BYTE* buff, LBA_t sector, UINT count){
+
+	//printf("disk_write() sector=%08x,buff=%08x,cnt=%u\n", sector, buff, count);
+
     sdcard_write(sector, count, buff);
 	
 #ifdef USE_CACHE

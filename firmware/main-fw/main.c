@@ -124,6 +124,10 @@ int main(int i, char **c)
 
 	
 	busy_wait(25);
+
+	timer1_en_write(0);
+	timer1_reload_write(-1);
+	timer1_en_write(1);
 	 
 	printf("\e[92;1m    - Boson SD Frame Grabber - \e[0m\n");
  	printf("\n (c) Copyright 2021 Greg Davill \n");
@@ -136,11 +140,18 @@ int main(int i, char **c)
  	boson_init();
 
 
-	for(int i = 0; i<10; i++){
-		printf("hres=%u, vres=%u\n", boson_resolution_hres_read(), boson_resolution_vres_read());
-		busy_wait(1000);
+	while(1){
+		busy_wait(100);
+		if(boson_resolution_hres_read() == 640 && boson_resolution_vres_read() == 512){
+			printf("Detected 640x512 Image stream\n");	
+			break;
+		}
+		else{
+			printf("hres=%u, vres=%u\n", boson_resolution_hres_read(), boson_resolution_vres_read());
+		}
 	}
 
+	
 
 	FATFS FatFs;		/* FatFs work area needed for each volume */
 	FIL Fil;			/* File object needed for each open file */
@@ -148,8 +159,6 @@ int main(int i, char **c)
 	FRESULT fr;
 
 	uint8_t* ptr = HYPERRAM_BASE;
-
-	unsigned int t = 0;
 
 	printf("&FatFs = %08x\n", &FatFs);
 	printf("&Fil = %08x\n", &Fil);
@@ -177,32 +186,76 @@ int main(int i, char **c)
 		fr = f_mkdir(path);
 		printf("f_mkdir() = %u\n",fr);
 
-		timer1_en_write(0);
-		timer1_reload_write(-1);
-		timer1_en_write(1);
+		
 
-		for( unsigned int i = 0; i < 10; i++){
+		for( unsigned int i = 0; i < 1; i++){
 
 			
 			timer1_update_value_write(1);
-			t = timer1_value_read();
+			UINT t = timer1_value_read();
 
 			char name[64];
 			sprintf(name, "%s/IMG_%04u.RAW", path, i);
 
 			printf("f_open() filename=%s -", name);
 
+			while(1){
+			/* Capture a frame? */
+			uint32_t burst = (4e-6 * CONFIG_CLOCK_FREQUENCY);
+
+			reader_source_mux_write(1);
+			reader_external_sync_write(0);
+			
+			reader_reset_write(1);
+			reader_burst_size_write(burst);
+			reader_transfer_size_write(4*1024*1024/4);
+			reader_start_address_write(HYPERRAM_BASE>>2);
+
+			/* write speed */
+			timer1_update_value_write(1);
+			UINT t0 = timer1_value_read();
+
+			reader_enable_write(1);
+			while(reader_done_read() == 0);
+
+			timer1_update_value_write(1);
+			t0 = t0 - timer1_value_read();
+
+			t0 /= (CONFIG_CLOCK_FREQUENCY / (int)1e6);
+			printf("\n\n \e[93;1m[%01lu.%06lu]\e[0m \n", t0 / (int)1e6 , t0 % (int)1e6);
+			
+			/* Flush caches */
+			flush_cpu_dcache();
+			flush_l2_cache();
+			
+				dump_bytes(HYPERRAM_BASE, 16*4, HYPERRAM_BASE);
+				//busy_wait(500);
+				break;
+			}
+			
+
 			fr = f_open(&Fil, name, FA_WRITE | FA_CREATE_ALWAYS);	/* Open a file */
 			
-			DWORD filesize = 640*1024;
+			DWORD filesize = 2*1024*1024;
+			ptr = HYPERRAM_BASE;
 
 			if (fr == FR_OK) {
 				fr = f_expand(&Fil, filesize, 1);	
-				fr = f_write(&Fil, ptr, filesize, &br);
-				
-				//printf("f_write()=%u %u\n", fr, br);
-				if (fr != FR_OK) {
-					printf("f_write()=%u - ", fr);
+				while(filesize > 0){
+					UINT xfer_size = 512;
+					BYTE buff[512];
+					
+					filesize -= xfer_size;
+					ptr += xfer_size;
+					memcpy(buff, ptr, xfer_size);
+
+					fr = f_write(&Fil, buff, xfer_size, &br);
+					
+					//printf("f_write()=%u %u\n", fr, br);
+					if ((fr != FR_OK) || (br != xfer_size)) {
+						printf("f_write(): fr=%u,bw=%u\n", fr, br);
+						break;
+					}
 				}
 				fr = f_close(&Fil);	 /* Close the file */
 			}else{

@@ -10,7 +10,8 @@ OBJECTS=main.o \
 		sdcard.o \
 		cache.o \
 		rb_tree.o \
-		boson.o flirCRC.o Serializer_BuiltIn.o 
+		boson.o flirCRC.o Serializer_BuiltIn.o \
+		hyperram.o
 
 vpath % $(MAIN-FW_DIRECTORY) $(MAIN-FW_DIRECTORY)/boson $(MAIN-FW_DIRECTORY)/fatfs/source
 
