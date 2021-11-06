@@ -1,17 +1,8 @@
 diff --git a/litesdcard/phy.py b/litesdcard/phy.py
-index 53a7143..bbbbbd2 100644
+index 53a7143..13edb55 100644
 --- a/litesdcard/phy.py
 +++ b/litesdcard/phy.py
-@@ -11,7 +11,7 @@ from operator import or_
- from migen import *
- from migen.genlib.resetsync import AsyncResetSynchronizer
- 
--from litex.build.io import SDROutput, SDRTristate
-+from litex.build.io import SDROutput, SDRTristate, DDROutput
- 
- from litex.soc.interconnect.csr import *
- from litex.soc.interconnect import stream
-@@ -521,10 +521,18 @@ class SDPHYIOGen(SDPHYIO):
+@@ -521,11 +521,20 @@ class SDPHYIOGen(SDPHYIO):
              self.comb += pads.rst.eq(0)
  
          # Clk
@@ -19,27 +10,21 @@ index 53a7143..bbbbbd2 100644
 -            clk = ClockSignal("sys"),
 -            i   = clocker.clk,
 -            o   = pads.clk
+-        )
 +        clk = Signal()
-+        self.specials += DDROutput(
-+            clk = clocker.clk,#ClockSignal("sys"),
-+            i1   = 1,
-+            i2   = 0,
-+            o   = clk
-+        )
-+        self.specials += Instance("DELAYG",
-+            p_DEL_MODE  = "USER_DEFINED",
-+            p_DEL_VALUE = 120, # (25ps per tap)
-+            i_A         = clk,
-+            o_Z         = pads.clk
-         )
++        self.specials += [
++            SDROutput(
++                clk = ClockSignal("sys"),
++                i   = clocker.clk,
++                o   = clk,
++            ),
++            Instance("DELAYG",
++                p_DEL_MODE  = "USER_DEFINED",
++                p_DEL_VALUE = 120, # (25ps per tap)
++                i_A         = clk,
++                o_Z         = pads.clk
++            )
++        ]
  
          # Cmd
-@@ -536,6 +544,8 @@ class SDPHYIOGen(SDPHYIO):
-             i   = sdpads.cmd.i,
-         )
- 
-+        
-+
-         # Data
-         for i in range(4):
-             self.specials += SDRTristate(
+         self.specials += SDRTristate(
