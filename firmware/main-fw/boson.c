@@ -248,16 +248,18 @@ void boson_init(void){
         dispatcher(DVO_SETDISPLAYMODE, (const uint8_t[]){UINT32_LE(0)}, 4);
         dispatcher(TELEMETRY_SETSTATE, (const uint8_t[]){UINT32_LE(0)}, 4); /* Disable Telemetry Line */
         dispatcher(TELEMETRY_SETLOCATION, (const uint8_t[]){UINT32_LE(0)}, 4); /* Telemetry Line Top */
-        dispatcher(DVO_SETANALOGVIDEOSTATE, (const uint8_t[]){UINT32_LE(0)}, 4);
-        dispatcher(DVO_SETOUTPUTFORMAT, (const uint8_t[]){UINT32_LE(2)}, 4); /* Mode: Deafult */
+        dispatcher(DVO_SETANALOGVIDEOSTATE, (const uint8_t[]){UINT32_LE(0)}, 4); /* Analog Off */
+        dispatcher(DVO_SETOUTPUTFORMAT, (const uint8_t[]){UINT32_LE(0)}, 4); /* Mode: RGB */
         dispatcher(DVO_SETOUTPUTYCBCRSETTINGS, (const uint8_t[]){UINT32_LE(0),UINT32_LE(1),UINT32_LE(0)}, 12); /* CbCr Order: Cb -> Cr */
         dispatcher(DVO_SETOUTPUTRGBSETTINGS, (const uint8_t[]){UINT32_LE(0),UINT32_LE(0)}, 8); /* RGB */
-        dispatcher(DVO_SETTYPE, (const uint8_t[]){UINT32_LE(0)}, 4); /* Type: COLOUR */
+        dispatcher(DVO_SETTYPE, (const uint8_t[]){UINT32_LE(0)}, 4); /* Type: MONO16 */
+        dispatcher(DVO_SETVIDEOSTANDARD, (const uint8_t[]){UINT32_LE(1)}, 4); /* PAL: Enabled */
         dispatcher(DVO_APPLYCUSTOMSETTINGS, 0, 0);
         //dispatcher(COLORLUT_SETID, (const uint8_t[]){UINT32_LE(_settings.pallete)}, 4); /* Colour LUT: Ironbow */
         busy_wait(10);
         dispatcher(COLORLUT_SETCONTROL, (const uint8_t[]){UINT32_LE(1)}, 4);
-        dispatcher(GAO_SETAVERAGERSTATE, (const uint8_t[]){UINT32_LE(0)}, 4);
+        dispatcher(GAO_SETAVERAGERSTATE, (const uint8_t[]){UINT32_LE(1)}, 4);
+
 
         busy_wait(500);
         dispatcher(BOSON_RUNFFC, 0, 0);

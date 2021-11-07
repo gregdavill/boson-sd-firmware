@@ -7,6 +7,7 @@ import os
 import shutil
 
 from migen import *
+from migen.genlib.misc import timeline
 
 
 from litex.build.generic_platform import *
@@ -55,11 +56,14 @@ class FrameExtraction(Module, AutoCSR):
 class BosonCapture(Module, AutoCSR):
     def __init__(self, platform, reader):
 
+        start = Signal()
+
         # Boson video stream
         self.submodules.boson = boson = Boson(platform, platform.request("boson"), platform.sys_clk_freq)
         self.submodules.resolution = res = ResolutionDetection()        
         fe = FrameExtraction()
         self.submodules += fe
+
 
         self.comb += [
             res.valid_i.eq(1),
@@ -70,27 +74,45 @@ class BosonCapture(Module, AutoCSR):
         ]
 
         # 16bit -> 32bit coverter
-        sc = StrideConverter([('data', 16)], [('data', 32)], reverse=True)
-        self.submodules += ResetInserter()(sc)
-        
+        sc = StrideConverter([('data', 16)], [('data', 32)], reverse=False)
+        sc = ResetInserter()(sc)
+        sc = ClockDomainsRenamer({"sys": "pix"})(sc)
+        self.submodules += sc
+
         # FIFO
-        fifo = AsyncFIFO([('data', 16)], 256)
+        fifo = AsyncFIFO([('data', 32)], 512)
         fifo = ClockDomainsRenamer({"write": "pix", "read": "sys"})(fifo)
         fifo = ResetInserter(["pix", "sys"])(fifo)
         self.submodules += fifo
-        self.fifo = fifo
-
 
         # self.comb += [
         #     fifo.sink.data.eq(boson.source.data),
         #     fifo.sink.valid.eq(boson.source.valid),
         # ]
-        self.submodules.pipeline = pipeline = Pipeline(fifo, sc)
+        self.submodules.pipeline = pipeline = Pipeline(sc, fifo)
         self.comb += [
             boson.source.connect(pipeline.sink),
         ]
 
-        reader.add_source(sc.source, "boson")
+
+        self.sync += timeline(fe.sof, 
+            [
+                (10, [start.eq(1)]),
+                (11, [start.eq(0)]),
+            ],
+        )
+
+        ps = PulseSynchronizer("sys", "pix")
+        self.comb += [
+            ps.i.eq(fifo.reset_sys),
+            fifo.reset_pix.eq(ps.o),
+
+            fifo.reset_sys.eq(fe.sof),
+            sc.reset.eq(ps.o),
+        ]
+        self.submodules += ps
+
+        reader.add_source(pipeline.source, "boson", start)
 
 
 #            dma.sof.eq(fe.sof),

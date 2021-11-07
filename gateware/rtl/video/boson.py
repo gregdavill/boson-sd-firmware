@@ -5,7 +5,8 @@ from migen import *
 
 from litex.soc.interconnect.stream import EndpointDescription, Endpoint
 
-from litex.soc.cores import uart, gpio
+from litex.soc.cores import clock, uart, gpio
+from litex.soc.cores.freqmeter import FreqMeter
 from rtl.ecp5_dynamic_pll import period_ns
 
 from litex.soc.interconnect.csr import AutoCSR
@@ -14,7 +15,7 @@ from litex.soc.interconnect.csr import AutoCSR
 
 class BosonDataRx(Module):
     def __init__(self, pads):
-        self.source = source = Endpoint(EndpointDescription([("data", 24)]))
+        self.source = source = Endpoint(EndpointDescription([("data", 16)]))
         
         vsync_ = Signal()
         vsync_falling = Signal()
@@ -37,13 +38,11 @@ class BosonDataRx(Module):
             )
         ]
 
-
-
 # Convert the Boson clock pin Signal into a clock domain
 class BosonClk(Module):
     def __init__(self, clk_pad, platform):
         self.clock_domains.cd_pix = ClockDomain()        
-        self.comb += self.cd_pix.clk.eq(clk_pad)
+        self.comb += self.cd_pix.clk.eq(~clk_pad)
         
         platform.add_period_constraint(self.cd_pix.clk, period_ns(27e6))
 
@@ -62,6 +61,8 @@ class Boson(Module, AutoCSR):
             self.submodules.gpio = gpio.GPIOOut(pads.pwr_en)
         if hasattr(pads, "reset"):
             self.submodules.reset = gpio.GPIOOut(pads.reset)
+
+        self.submodules.frequency = FreqMeter(int(clk_freq), clk=ClockSignal("pix"))
 
         self.submodules.uart_phy = uart_phy = uart.UARTPHY(pads, clk_freq, baudrate=921600)
         self.submodules.uart = uart.UART(uart_phy, tx_fifo_depth=4, rx_fifo_depth=128)

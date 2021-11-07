@@ -151,6 +151,12 @@ int main(int i, char **c)
 		}
 	}
 
+
+	for(int i = 0; i < 5; i++){
+		printf("freq=%u\n", boson_boson_frequency_value_read());
+		busy_wait(100);
+	}
+
 	
 
 	FATFS FatFs;		/* FatFs work area needed for each volume */
@@ -204,18 +210,18 @@ int main(int i, char **c)
 			uint32_t burst = (4e-6 * CONFIG_CLOCK_FREQUENCY);
 
 			reader_source_mux_write(1);
-			reader_external_sync_write(0);
 			
 			reader_reset_write(1);
+			reader_external_sync_write(1);
 			reader_burst_size_write(burst);
 			reader_transfer_size_write(4*1024*1024/4);
 			reader_start_address_write(HYPERRAM_BASE>>2);
+			reader_enable_write(1);
 
 			/* write speed */
 			timer1_update_value_write(1);
 			UINT t0 = timer1_value_read();
 
-			reader_enable_write(1);
 			while(reader_done_read() == 0);
 
 			timer1_update_value_write(1);
@@ -227,8 +233,10 @@ int main(int i, char **c)
 			/* Flush caches */
 			flush_cpu_dcache();
 			flush_l2_cache();
+
+			busy_wait(100);
 			
-				dump_bytes(HYPERRAM_BASE, 16*4, HYPERRAM_BASE);
+				dump_bytes(HYPERRAM_BASE + 32*1024, 16*16, HYPERRAM_BASE);
 				//busy_wait(500);
 				break;
 			}
@@ -236,7 +244,7 @@ int main(int i, char **c)
 
 			fr = f_open(&Fil, name, FA_WRITE | FA_CREATE_ALWAYS);	/* Open a file */
 			
-			DWORD filesize = 2*1024*1024;
+			DWORD filesize = 4*1024*1024;
 			ptr = HYPERRAM_BASE;
 
 			if (fr == FR_OK) {
