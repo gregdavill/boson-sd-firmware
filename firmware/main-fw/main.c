@@ -226,7 +226,7 @@ int main(int i, char **c)
 
 		
 
-		for( unsigned int i = 0; i < 3; i++){
+		for( unsigned int i = 0; i < 5; i++){
 
 			
 			timer1_update_value_write(1);
@@ -259,47 +259,48 @@ int main(int i, char **c)
 
 				busy_wait(100);
 				
-				dump_bytes(HYPERRAM_BASE, 256, HYPERRAM_BASE);
+				//dump_bytes(HYPERRAM_BASE, 256, HYPERRAM_BASE);
 				//busy_wait(500);
 				break;
 			}
 			
 
-			fr = f_open(&Fil, name, FA_WRITE | FA_CREATE_ALWAYS);	/* Open a file */
+			FATFS_ERR(fr = f_open(&Fil, name, FA_WRITE | FA_CREATE_ALWAYS));	/* Open a file */
 			
 			DWORD filesize = 640*1024;
 			ptr = HYPERRAM_BASE;
 			bool first = true;
 
 			if (fr == FR_OK) {
-				fr = f_expand(&Fil, filesize, 1);	
-				while(filesize > 0){
-					UINT xfer_size = 512;
-					BYTE buff[512] __attribute__((aligned(4)));
-					memcpy(buff, ptr, xfer_size);
-
-					while(memcmp(buff, ptr, xfer_size) != 0){
-						printf("memory error?! @%08x\n", ptr);
-						memcpy(buff, ptr, xfer_size);
+				//FATFS_ERR(fr = f_expand(&Fil, filesize, 1));	
+				FATFS_ERR(fr = f_write(&Fil, ptr, filesize, &br));
+				if (br != filesize) {
+						printf("bw error. %u != %u\n", br, filesize);
 					}
-					
-					filesize -= xfer_size;
-					ptr += xfer_size;
+				busy_wait(40);
+				// while(filesize > 0){
+				// 	UINT xfer_size = 512;
+				// 	// BYTE buff[512] __attribute__((aligned(4)));
+				// 	// memcpy(buff, ptr, xfer_size);
 
-					fr = f_write(&Fil, buff, xfer_size, &br);
+				// 	// while(memcmp(buff, ptr, xfer_size) != 0){
+				// 	// 	printf("memory error?! @%08x\n", ptr);
+				// 	// 	memcpy(buff, ptr, xfer_size);
+				// 	// }
 					
-					//printf("f_write()=%u %u\n", fr, br);
-					if ((fr != FR_OK) || (br != xfer_size)) {
-						printf("f_write(): fr=%u,bw=%u\n", fr, br);
-						break;
-					}
-				}
+				// 	filesize -= xfer_size;
+				// 	ptr += xfer_size;
 
-				FATFS_ERR(fr = f_sync(&Fil));
-				//FATFS_ERR(fr = f_close(&Fil));
+				// 	FATFS_ERR(fr = f_write(&Fil, ptr, xfer_size, &br));
+					
+				// 	if ((fr != FR_OK) || (br != xfer_size)) {
+				// 		break;
+				// 	}
+				// }
+				FATFS_ERR(fr = f_close(&Fil));
+				FATFS_ERR(disk_ioctl(0, 0, 0));
 				
-			}else{
-				printf("f_open()=%u - ", fr);
+				
 			}
 
 			timer1_update_value_write(1);

@@ -521,11 +521,24 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 #else
 		nblocks = 1;
 #endif
-		/* Initialize DMA Reader */
-		sdmem2block_dma_enable_write(0);
-		sdmem2block_dma_base_write((uint64_t)(uintptr_t) buf);
-		sdmem2block_dma_length_write(512*nblocks);
-		sdmem2block_dma_enable_write(1);
+
+		if(buf < (uint8_t*)HYPERRAM_BASE){
+			/* Initialize DMA Reader */
+			sdmem2block_dma_enable_write(0);
+			sdmem2block_dma_base_write((uint64_t)(uintptr_t) buf);
+			sdmem2block_dma_length_write(512*nblocks);
+			sdmem2block_dma_enable_write(1);
+		}else{
+			//printf("sdcard_write() cnt=%u, buf=%08x\n", count, buf);
+			writer_reset_write(1);
+			writer_enable_write(0);
+			writer_burst_size_write(256);
+			writer_transfer_size_write((512/4)*nblocks);
+			writer_start_address_write((uint32_t)buf >> 2);
+			writer_sink_mux_write(1);
+			writer_external_sync_write(0);
+			writer_enable_write(1);
+		}
 
 		/* Write Block(s) to SDCard */
 #ifdef SDCARD_CMD23_SUPPORT
@@ -538,12 +551,18 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 
 
 		/* Wait for DMA Reader to complete */
-		while ((sdmem2block_dma_done_read() & 0x1) == 0);
-
-		if(sdmem2block_dma_done_read() != 1){
-			printf("sdmem2block_dma_done_read() = %04x\n", sdmem2block_dma_done_read());
-
+		if(buf < (uint8_t*)HYPERRAM_BASE){
+			while ((sdmem2block_dma_done_read() & 0x1) == 0);
+			
+			if(sdmem2block_dma_done_read() != 1){
+				printf("sdmem2block_dma_done_read() = %04x\n", sdmem2block_dma_done_read());
+			}
+		}else{
+			while(writer_done_read() == 0);
+			writer_enable_write(0);
 		}
+		
+
 
 		/* Stop transmission (Only for multiple block reads) */
 		if (nblocks > 1)

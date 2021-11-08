@@ -189,19 +189,20 @@ class Boson_SoC(SoCCore):
         from litespi.opcodes import SpiNorFlashOpCodes as Codes
         self.add_spi_flash(mode="4x", module=MX25R1635F(Codes.READ_1_1_4), with_master=True)
 
-        # SDMMC ------------------------------------------------------------------------------------
-        self.add_sdcard(name="sdmmc", mode="read+write", use_emulator=False, software_debug=False)
-
         # HyperRAM with DMAs -----------------------------------------------------------------------
         self.submodules.writer = writer = StreamWriter()
         self.submodules.reader = reader = StreamReader()
         self.submodules.hyperram = hyperram = StreamableHyperRAM(platform.request("hyper_ram"), devices=[reader, writer])
         self.register_mem("hyperram", self.mem_map['hyperram'], hyperram.bus, size=0x800000)
 
+
         # PRBS Tester, used to test HyperRAM DMAs --------------------------------------------------
         self.submodules.prbs = PRBSStream()
         reader.add_source(self.prbs.source.source, "prbs")
         writer.add_sink(self.prbs.sink.sink, "prbs")
+        
+        # SDMMC ------------------------------------------------------------------------------------
+        self.add_sdcard(name="sdmmc", mode="read+write", use_emulator=False, software_debug=False)
 
         # Boson -----------------------------------------------------------------------------------
         self.submodules.boson = BosonCapture(platform, reader)
@@ -249,6 +250,50 @@ class Boson_SoC(SoCCore):
             return r
 
         self.add_constant("DIVA_GIT_SHA1", get_git_revision())
+
+    # Add SDCard -----------------------------------------------------------------------------------
+    def add_sdcard(self, name="sdcard", mode="read+write", use_emulator=False, software_debug=False):
+        # Imports.
+        from litesdcard.emulator import SDEmulator
+        from litesdcard.phy import SDPHY
+        from litesdcard.core import SDCore
+        from litesdcard.frontend.dma import SDBlock2MemDMA
+        from rtl.litesdcard_dma import SDMem2BlockDMA
+
+        # Checks.
+        assert mode in ["read", "write", "read+write"]
+
+        # Emulator / Pads.
+        if use_emulator:
+            sdemulator = SDEmulator(self.platform)
+            self.submodules += sdemulator
+            sdcard_pads = sdemulator.pads
+        else:
+            sdcard_pads = self.platform.request(name)
+
+        # Core.
+        self.check_if_exists("sdphy")
+        self.check_if_exists("sdcore")
+        self.submodules.sdphy  = SDPHY(sdcard_pads, self.platform.device, self.clk_freq, cmd_timeout=10e-1, data_timeout=10e-1)
+        self.submodules.sdcore = SDCore(self.sdphy)
+
+        # Block2Mem DMA.
+        if "read" in mode:
+            bus = wishbone.Interface(data_width=self.bus.data_width, adr_width=self.bus.address_width)
+            self.submodules.sdblock2mem = SDBlock2MemDMA(bus=bus, endianness=self.cpu.endianness)
+            self.comb += self.sdcore.source.connect(self.sdblock2mem.sink)
+            dma_bus = self.bus if not hasattr(self, "dma_bus") else self.dma_bus
+            dma_bus.add_master("sdblock2mem", master=bus)
+
+        # Mem2Block DMA.
+        if "write" in mode:
+            bus = wishbone.Interface(data_width=self.bus.data_width, adr_width=self.bus.address_width)
+            self.submodules.sdmem2block = SDMem2BlockDMA(bus=bus, endianness=self.cpu.endianness, writer=self.writer)
+            self.comb += self.sdmem2block.source.connect(self.sdcore.sink)
+            dma_bus = self.bus if not hasattr(self, "dma_bus") else self.dma_bus
+            dma_bus.add_master("sdmem2block", master=bus)
+
+        
 
     def do_exit(self, vns):
         if hasattr(self, "analyzer"):

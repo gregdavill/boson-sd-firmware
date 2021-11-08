@@ -113,13 +113,3 @@ class BosonCapture(Module, AutoCSR):
         reader.add_source(pipeline.source, "boson", start)
 
 
-#            dma.sof.eq(fe.sof),
-            
- #           fifo.reset_pix.eq(dma.wait_sof),
-  #          fifo.reset_sys.eq(dma.wait_sof),   
-            
-   #         sc.reset.eq(dma.wait_sof),   
-    #        dma.port.flush.eq(dma.wait_sof),
-
-
-

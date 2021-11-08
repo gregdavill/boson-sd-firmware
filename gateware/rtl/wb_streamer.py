@@ -110,7 +110,7 @@ class StreamWriter(Module, AutoCSR):
 
         self.sink_csr = CSRStorage(4, name="sink_mux")
 
-        enabled = Signal()
+        self.enabled = enabled = Signal()
         overflow = Signal()
         underflow = Signal()
         self.comb += [
