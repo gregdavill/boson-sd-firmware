@@ -204,7 +204,7 @@ FLR_RESULT dispatcher(FLR_FUNCTION fnID, const uint8_t *sendData, const uint32_t
 
     /* Listen to the RX bytes, to check error code. */
     int retry = 3;
-    while(--retry){
+    while(retry--){
         r = dispatcher_rx(recvData, &recvBytes);
         if(r == R_SUCCESS){
             /* Check CRC */
@@ -228,7 +228,7 @@ FLR_RESULT dispatcher(FLR_FUNCTION fnID, const uint8_t *sendData, const uint32_t
         }
 
         
-        printf("FnID=%u ret=%u\n",fnID, r);
+        printf("FnID=%u ret=%u\n", fnID, r);
     }
 
     

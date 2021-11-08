@@ -204,15 +204,11 @@ void prbs_memtest(uint32_t base, uint32_t len){
 	}
 
 
-	reader_external_sync_write(1);
-	writer_external_sync_write(1);
-
 	writer_enable_write(0);
 	reader_enable_write(0);
-	
+
 	reader_source_mux_write(0);
 	writer_sink_mux_write(0);
-
 }
 
 

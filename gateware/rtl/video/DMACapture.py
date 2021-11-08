@@ -107,7 +107,7 @@ class BosonCapture(Module, AutoCSR):
         ]
 
         self.comb += [
-            gate.enable.eq(enabled | fifo.source.first)
+            gate.enable.eq(enabled)
         ]
 
         reader.add_source(pipeline.source, "boson", start)

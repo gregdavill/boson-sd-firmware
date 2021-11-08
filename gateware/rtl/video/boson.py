@@ -20,7 +20,7 @@ class BosonDataRx(Module):
         vsync_ = Signal()
         vsync_falling = Signal()
 
-        pixel_counter = Signal(20)        
+        first = Signal()
 
         self.comb += [
             vsync_falling.eq(~pads.vsync & vsync_),
@@ -30,13 +30,13 @@ class BosonDataRx(Module):
             source.data.eq(pads.data),
             source.valid.eq(pads.valid),
 
-            source.first.eq(pads.valid & (pixel_counter == 0)),
+            source.first.eq(pads.valid & first),
 
             vsync_.eq(pads.vsync),
             If(vsync_falling,
-                pixel_counter.eq(0),
+                first.eq(0),
             ).Else(
-                pixel_counter.eq(pixel_counter + 1)
+                first.eq(pads.valid)
             )
         ]
 

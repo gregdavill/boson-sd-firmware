@@ -137,7 +137,7 @@ class Boson_SoC(SoCCore):
 
         self.platform = platform = boson_frame_grabber_r0d3.Platform()
 
-        platform.sys_clk_freq = sys_clk_freq = 75e6
+        platform.sys_clk_freq = sys_clk_freq = 70e6
         SoCCore.__init__(
             self,
             platform,
@@ -147,7 +147,7 @@ class Boson_SoC(SoCCore):
             with_uart=False,
             csr_data_width=32,
             ident_version=False,
-            wishbone_timeout_cycles=1024,
+            wishbone_timeout_cycles=1024*8,
             integrated_sram_size=64 * 1024,
             cpu_reset_address=self.mem_map['sram'],
         )

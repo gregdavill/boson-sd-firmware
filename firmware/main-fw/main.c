@@ -23,6 +23,8 @@ uint32_t frame_count = 0;
 /* prototypes */
 void isr(void);
 FRESULT scan_folders (char* path,UINT* cnt);
+void boson_capture_configure(void);
+void boson_capture_wait(void);
 
 FRESULT scan_folders (
     char* path,        /* Start node to be scanned (***also used as work area***) */
@@ -54,6 +56,32 @@ FRESULT scan_folders (
     }
 
     return res;
+}
+
+#define FATFS_ERR(EXP) \
+do {\
+	if(EXP != FR_OK){ \
+		printf( "fatfs: ("#EXP ")=%u\n", EXP); \
+	} \
+} while(0);
+
+
+void boson_capture_configure(){
+	uint32_t burst = (4e-6 * CONFIG_CLOCK_FREQUENCY);
+
+	reader_reset_write(1);
+	reader_source_mux_write(1);
+	reader_external_sync_write(1);
+	reader_burst_size_write(burst);
+	reader_transfer_size_write(640*1024/4);
+	reader_start_address_write(HYPERRAM_BASE>>2);
+	reader_enable_write(1);
+}
+
+void boson_capture_wait(){
+	while(reader_done_read() == 0);
+	//reader_enable_write(0);
+	reader_reset_write(1);
 }
 
 
@@ -154,6 +182,9 @@ int main(int i, char **c)
 	}
 
 
+	//boson_capture_configure();
+
+
 	for(int i = 0; i < 5; i++){
 		printf("freq=%u\n", boson_boson_frequency_value_read());
 		busy_wait(100);
@@ -166,15 +197,14 @@ int main(int i, char **c)
 	UINT bw, br;
 	FRESULT fr;
 
-	uint8_t* ptr = HYPERRAM_BASE;
+	volatile uint8_t* ptr = HYPERRAM_BASE;
 
 	printf("&FatFs = %08x\n", &FatFs);
 	printf("&Fil = %08x\n", &Fil);
 
 
-	fr = f_mount(&FatFs, "", 1);		/* Give a work area to the default drive */
+	FATFS_ERR(fr = f_mount(&FatFs, "", 1));		/* Give a work area to the default drive */
 
-	printf("f_mount()=%u, %u\n", fr, bw);
 	if (fr == FR_OK) {
 
 
@@ -208,37 +238,28 @@ int main(int i, char **c)
 			printf("f_open() filename=%s -", name);
 
 			while(1){
-			/* Capture a frame? */
-			uint32_t burst = (4e-6 * CONFIG_CLOCK_FREQUENCY);
+				boson_capture_configure();
 
-			reader_source_mux_write(1);
-			
-			reader_reset_write(1);
-			reader_external_sync_write(1);
-			reader_burst_size_write(burst);
-			reader_transfer_size_write(640*1024/4);
-			reader_start_address_write(HYPERRAM_BASE>>2);
-			reader_enable_write(1);
+				/* write speed */
+				timer1_update_value_write(1);
+				UINT t0 = timer1_value_read();
 
-			/* write speed */
-			timer1_update_value_write(1);
-			UINT t0 = timer1_value_read();
+				boson_capture_wait();
 
-			while(reader_done_read() == 0);
+				timer1_update_value_write(1);
+				t0 = t0 - timer1_value_read();
 
-			timer1_update_value_write(1);
-			t0 = t0 - timer1_value_read();
+				t0 /= (CONFIG_CLOCK_FREQUENCY / (int)1e6);
+				printf("\n\n \e[93;1m[%01lu.%06lu]\e[0m \n", t0 / (int)1e6 , t0 % (int)1e6);
+				
+				/* Flush caches */
+				flush_cpu_icache();
+				flush_cpu_dcache();
+				flush_l2_cache();
 
-			t0 /= (CONFIG_CLOCK_FREQUENCY / (int)1e6);
-			printf("\n\n \e[93;1m[%01lu.%06lu]\e[0m \n", t0 / (int)1e6 , t0 % (int)1e6);
-			
-			/* Flush caches */
-			flush_cpu_dcache();
-			flush_l2_cache();
-
-			busy_wait(100);
-			
-				dump_bytes(HYPERRAM_BASE, 16*16, HYPERRAM_BASE);
+				busy_wait(100);
+				
+				dump_bytes(HYPERRAM_BASE, 256, HYPERRAM_BASE);
 				//busy_wait(500);
 				break;
 			}
@@ -246,18 +267,24 @@ int main(int i, char **c)
 
 			fr = f_open(&Fil, name, FA_WRITE | FA_CREATE_ALWAYS);	/* Open a file */
 			
-			DWORD filesize = 641*1024;
+			DWORD filesize = 640*1024;
 			ptr = HYPERRAM_BASE;
+			bool first = true;
 
 			if (fr == FR_OK) {
 				fr = f_expand(&Fil, filesize, 1);	
 				while(filesize > 0){
 					UINT xfer_size = 512;
-					BYTE buff[512];
+					BYTE buff[512] __attribute__((aligned(4)));
+					memcpy(buff, ptr, xfer_size);
+
+					while(memcmp(buff, ptr, xfer_size) != 0){
+						printf("memory error?! @%08x\n", ptr);
+						memcpy(buff, ptr, xfer_size);
+					}
 					
 					filesize -= xfer_size;
 					ptr += xfer_size;
-					memcpy(buff, ptr, xfer_size);
 
 					fr = f_write(&Fil, buff, xfer_size, &br);
 					
@@ -267,7 +294,10 @@ int main(int i, char **c)
 						break;
 					}
 				}
-				fr = f_close(&Fil);	 /* Close the file */
+
+				FATFS_ERR(fr = f_sync(&Fil));
+				//FATFS_ERR(fr = f_close(&Fil));
+				
 			}else{
 				printf("f_open()=%u - ", fr);
 			}
