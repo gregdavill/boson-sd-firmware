@@ -107,9 +107,9 @@ int sdcard_wait_cmd_done(void) {
 	for (;;) {
 		event = sdcore_cmd_event_read();
 #ifdef SDCARD_DEBUG
-		//printf("cmdevt: %08x\n", event);
+		printf("cmdevt: %08x\n", event);
 #endif
-		busy_wait_us(10);
+		busy_wait_us(20);
 		if (event & 0x1)
 			break;
 	}
@@ -136,12 +136,15 @@ int sdcard_wait_data_done(void) {
 	for (;;) {
 		event = sdcore_data_event_read();
 #ifdef SDCARD_DEBUG
-		//printf("dataevt: %08x\n", event);
+		printf("dataevt: %08x\n", event);
 #endif
 		if (event & 0x1)
 			break;
-		busy_wait_us(10);
+		busy_wait_us(20);
 	}
+
+	busy_wait_us(50);
+
 	if (event & 0x4)
 		return SD_TIMEOUT;
 	else if (event & 0x8)
@@ -369,6 +372,7 @@ int sdcard_stop_transmission(void) {
 #ifdef SDCARD_DEBUG
 	printf("CMD12: STOP_TRANSMISSION\n");
 #endif
+	dly_us(400);
 	return sdcard_send_command(0, 12, SDCARD_CTRL_RESPONSE_SHORT_BUSY);
 }
 
@@ -524,6 +528,7 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 
 		if(buf < (uint8_t*)HYPERRAM_BASE){
 			/* Initialize DMA Reader */
+			//printf("sdcard_write() cnt=%u, buf=%08x\n", count, buf);
 			sdmem2block_dma_enable_write(0);
 			sdmem2block_dma_base_write((uint64_t)(uintptr_t) buf);
 			sdmem2block_dma_length_write(512*nblocks);
@@ -532,7 +537,7 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 			//printf("sdcard_write() cnt=%u, buf=%08x\n", count, buf);
 			writer_reset_write(1);
 			writer_enable_write(0);
-			writer_burst_size_write(256);
+			writer_burst_size_write(128);
 			writer_transfer_size_write((512/4)*nblocks);
 			writer_start_address_write((uint32_t)buf >> 2);
 			writer_sink_mux_write(1);
@@ -558,21 +563,32 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 				printf("sdmem2block_dma_done_read() = %04x\n", sdmem2block_dma_done_read());
 			}
 		}else{
-			while(writer_done_read() == 0);
+			int timeout = 0;
+			while(writer_done_read() == 0){
+				if(timeout++ > 1000){
+					printf("Timeout?!()\n");
+					break;
+				}
+				dly_us(10);
+			}
+			printf(".");
 			writer_enable_write(0);
 		}
 		
 
 
 		/* Stop transmission (Only for multiple block reads) */
-		if (nblocks > 1)
+		if (nblocks > 1){
 			sdcard_stop_transmission();
+		}
 
 		/* Update Block/Buffer/Count */
 		block += nblocks;
 		buf   += 512*nblocks;
 		count -= nblocks;
 	}
+
+	busy_wait(1);
 }
 #endif
 
@@ -672,17 +688,17 @@ DSTATUS disk_initialize(BYTE pdrv)
 
 	/* Set SD clk freq to Initialization frequency */
 	sdcard_set_clk_freq(SDCARD_CLK_FREQ_INIT, 0);
-	busy_wait(1);
+	dly_us(1000);
 
 	for (timeout=1000; timeout>0; timeout--) {
 		/* Set SDCard in SPI Mode (generate 80 dummy clocks) */
 		sdphy_init_initialize_write(1);
-		busy_wait(1);
+		dly_us(100);
 
 		/* Set SDCard in Idle state */
 		if (sdcard_go_idle() == SD_OK)
 			break;
-		busy_wait(1);
+		dly_us(100);
 	}
 	if (timeout == 0)
 		return 0;

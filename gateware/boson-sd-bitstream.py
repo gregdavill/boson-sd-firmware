@@ -200,7 +200,7 @@ class Boson_SoC(SoCCore):
         self.submodules.prbs = PRBSStream()
         reader.add_source(self.prbs.source.source, "prbs")
         writer.add_sink(self.prbs.sink.sink, "prbs")
-        
+
         # SDMMC ------------------------------------------------------------------------------------
         self.add_sdcard(name="sdmmc", mode="read+write", use_emulator=False, software_debug=False)
 
@@ -274,7 +274,7 @@ class Boson_SoC(SoCCore):
         # Core.
         self.check_if_exists("sdphy")
         self.check_if_exists("sdcore")
-        self.submodules.sdphy  = SDPHY(sdcard_pads, self.platform.device, self.clk_freq, cmd_timeout=10e-1, data_timeout=10e-1)
+        self.submodules.sdphy  = SDPHY(sdcard_pads, self.platform.device, self.clk_freq, cmd_timeout=10e-3, data_timeout=10e-3)
         self.submodules.sdcore = SDCore(self.sdphy)
 
         # Block2Mem DMA.

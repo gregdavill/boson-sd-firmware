@@ -58,10 +58,30 @@ FRESULT scan_folders (
     return res;
 }
 
+
+static
+void put_rc (FRESULT rc)
+{
+	const char *p;
+	static const char str[] =
+		"OK\0DISK_ERR\0INT_ERR\0NOT_READY\0NO_FILE\0NO_PATH\0INVALID_NAME\0"
+		"DENIED\0EXIST\0INVALID_OBJECT\0WRITE_PROTECTED\0INVALID_DRIVE\0"
+		"NOT_ENABLED\0NO_FILE_SYSTEM\0MKFS_ABORTED\0TIMEOUT\0LOCKED\0"
+		"NOT_ENOUGH_CORE\0TOO_MANY_OPEN_FILES\0FR_INVALID_PARAMETER\0";
+	FRESULT i;
+
+	for (p = str, i = 0; i != rc && *p; i++) {
+		while(*p++);
+	}
+	printf("rc=%u FR_%s\n", rc, p);
+}
+
 #define FATFS_ERR(EXP) \
 do {\
-	if(EXP != FR_OK){ \
-		printf( "fatfs: ("#EXP ")=%u\n", EXP); \
+	FRESULT rc; \
+	if((rc = EXP) != FR_OK){ \
+		printf( "fatfs: ("#EXP ") ", EXP); \
+		put_rc(rc); \
 	} \
 } while(0);
 
@@ -226,81 +246,69 @@ int main(int i, char **c)
 
 		
 
-		for( unsigned int i = 0; i < 5; i++){
+		for( unsigned int i = 0; i < 500; i++){
 
 			
-			timer1_update_value_write(1);
-			UINT t = timer1_value_read();
 
 			char name[64];
 			sprintf(name, "%s/IMG_%04u.RAW", path, i);
 
 			printf("f_open() filename=%s -", name);
 
-			while(1){
-				boson_capture_configure();
 
-				/* write speed */
-				timer1_update_value_write(1);
-				UINT t0 = timer1_value_read();
+			/* Capture from the Boson Stream */
+			boson_capture_configure();
 
-				boson_capture_wait();
+			/* Keep time to profile capture */
+			timer1_update_value_write(1);
+			UINT t0 = timer1_value_read();
 
-				timer1_update_value_write(1);
-				t0 = t0 - timer1_value_read();
+			boson_capture_wait();
 
-				t0 /= (CONFIG_CLOCK_FREQUENCY / (int)1e6);
-				printf("\n\n \e[93;1m[%01lu.%06lu]\e[0m \n", t0 / (int)1e6 , t0 % (int)1e6);
-				
-				/* Flush caches */
-				flush_cpu_icache();
-				flush_cpu_dcache();
-				flush_l2_cache();
+			timer1_update_value_write(1);
+			t0 = t0 - timer1_value_read();
 
-				busy_wait(100);
-				
-				//dump_bytes(HYPERRAM_BASE, 256, HYPERRAM_BASE);
-				//busy_wait(500);
-				break;
-			}
+			t0 /= (CONFIG_CLOCK_FREQUENCY / (int)1e6);
+			printf("\n\n \e[93;1m[%01lu.%06lu]\e[0m \n", t0 / (int)1e6 , t0 % (int)1e6);
 			
+			/* Flush caches because we've used the DMA */
+			flush_cpu_dcache();
+			flush_l2_cache();
 
-			FATFS_ERR(fr = f_open(&Fil, name, FA_WRITE | FA_CREATE_ALWAYS));	/* Open a file */
+			busy_wait(10);
+			
+			timer1_update_value_write(1);
+			UINT t = timer1_value_read();
+			
+			/* Create our file */
+			FATFS_ERR(fr = f_open(&Fil, name, FA_WRITE | FA_CREATE_ALWAYS));	
 			
 			DWORD filesize = 640*1024;
 			ptr = HYPERRAM_BASE;
-			bool first = true;
 
 			if (fr == FR_OK) {
-				//FATFS_ERR(fr = f_expand(&Fil, filesize, 1));	
-				FATFS_ERR(fr = f_write(&Fil, ptr, filesize, &br));
-				if (br != filesize) {
-						printf("bw error. %u != %u\n", br, filesize);
+				FATFS_ERR(fr = f_expand(&Fil, filesize, 1));	
+				
+				if(0){
+					/* Basic File writing, will typically write 64 sectors at a time, */
+					FATFS_ERR(fr = f_write(&Fil, ptr, filesize, &br));
+					if (br != filesize) {
+							printf("bw error. %u != %u\n", br, filesize);
+						}
 					}
-				busy_wait(40);
-				// while(filesize > 0){
-				// 	UINT xfer_size = 512;
-				// 	// BYTE buff[512] __attribute__((aligned(4)));
-				// 	// memcpy(buff, ptr, xfer_size);
+				else{
+					/* Accessing the contiguous file via low-level disk functions */
+					FIL* fp = &Fil;
 
-				// 	// while(memcmp(buff, ptr, xfer_size) != 0){
-				// 	// 	printf("memory error?! @%08x\n", ptr);
-				// 	// 	memcpy(buff, ptr, xfer_size);
-				// 	// }
-					
-				// 	filesize -= xfer_size;
-				// 	ptr += xfer_size;
+					/* Get physical location of the file data */
+					UINT drv = fp->obj.fs->pdrv;
+					LBA_t lba = fp->obj.fs->database + fp->obj.fs->csize * (fp->obj.sclust - 2);
 
-				// 	FATFS_ERR(fr = f_write(&Fil, ptr, xfer_size, &br));
-					
-				// 	if ((fr != FR_OK) || (br != xfer_size)) {
-				// 		break;
-				// 	}
-				// }
+					/* Write sequential sectors from top of the file at a time */
+					FATFS_ERR(disk_write(drv, ptr, lba, filesize/512));
+				}
+				
 				FATFS_ERR(fr = f_close(&Fil));
-				FATFS_ERR(disk_ioctl(0, 0, 0));
-				
-				
 			}
 
 			timer1_update_value_write(1);
@@ -308,85 +316,18 @@ int main(int i, char **c)
 
 			t /= (CONFIG_CLOCK_FREQUENCY / (int)1e6);
 			printf(" \e[92;1m[%01lu.%06lu]\e[0m\n", t / (int)1e6 , t % (int)1e6);
+
+			busy_wait(50);
 		}
 
 	}
 
+	FATFS_ERR(f_unmount(""));
 	
 
     while(1) {
-			if(uart_read_nonblock()){
-				char c = uart_read();
-				if(c == 'b')
-					reset_out_write(1);
-			}
-
-			//capture_service();
-			//transmit_service();
-			//hb_service();
 		
 	}
 	
 	return 0;
 }
-
-
-
-void hb_service()
-{
-	static int last_event;
-	static int counter;
-
-	if(elapsed(&last_event, CONFIG_CLOCK_FREQUENCY/100)) {
-		leds_out_write(counter >= 5);
-		if(++counter >= 10) {
-			printf("frame_count: 0x%08x %u\n", frame_count, sdphy_card_detect_read());
-			counter = 0;
-		}
-	}
-}
-
-
-enum {
-	BUFFER_CLAIMED = 1,
-	BUFFER_COMPLETE = 2,
-};
-
-uint32_t buffers[] = {
-	0x00000000,
-	0x02000000,
-	0x04000000,
-};
-
-uint8_t buffer_owners[] = {0,0,0};
-
-
-int32_t get_free_buffer(){
-	for(int i = 0; i < 3; i++){
-		if(!(buffer_owners[i] & BUFFER_CLAIMED)){
-			if(!(buffer_owners[i] & BUFFER_COMPLETE)){
-				return i;
-			}
-		}
-	}
-
-	for(int i = 0; i < 3; i++){
-		if(!(buffer_owners[i] & BUFFER_CLAIMED)){
-			return i;
-		}
-	}
-
-	return -1;
-}
-
-
-int32_t get_complete_buffer(){
-	for(int i = 0; i < 3; i++){
-		if((buffer_owners[i] & BUFFER_COMPLETE)){
-			return i;
-		}
-	}
-
-	return -1;
-}
-
