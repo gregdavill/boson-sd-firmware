@@ -1,4 +1,5 @@
 #include "include/boson.h"
+#include "boson/EnumTypes.h"
 #include <time.h>
 //#include "include/settings.h"
 #include <generated/csr.h>
@@ -134,7 +135,7 @@ FLR_RESULT dispatcher_tx(uint32_t seqNum, FLR_FUNCTION fnID, const uint8_t *send
 FLR_RESULT dispatcher_rx(uint8_t* recvData, uint32_t* recvBytes) {
 
     /* Setup a timeout interval */
-    int timeout = 200;
+    int timeout = 250;
     int timeout_count = 0;
 
     FLR_RESULT errorCode = R_UART_RECEIVE_TIMEOUT;
@@ -202,27 +203,34 @@ FLR_RESULT dispatcher(FLR_FUNCTION fnID, const uint8_t *sendData, const uint32_t
     boson_uart_sync();
 
     /* Listen to the RX bytes, to check error code. */
-    r = dispatcher_rx(recvData, &recvBytes);
-    if(r == R_SUCCESS){
-        /* Check CRC */
-        if(recvBytes > 4){
-            uint16_t calcCRC = calcFlirCRC16Bytes(recvBytes - 2, recvData + 1);
-            if(calcCRC != 0){
+    int retry = 3;
+    while(--retry){
+        r = dispatcher_rx(recvData, &recvBytes);
+        if(r == R_SUCCESS){
+            /* Check CRC */
+            if(recvBytes > 4){
+                uint16_t calcCRC = calcFlirCRC16Bytes(recvBytes - 2, recvData + 1);
+                if(calcCRC != 0){
+                    return R_UART_UNSPECIFIED_FAILURE;
+                }
+            }
+            /* Check seq number */
+            uint32_t rx_seq = 0;
+            byteToUINT_32(recvData + 2, &rx_seq);
+            if(seq != rx_seq){
                 return R_UART_UNSPECIFIED_FAILURE;
             }
+            
+            /* Check result code */
+            byteToUINT_32(recvData + 10, &r);
+
+            return R_SUCCESS;
         }
-        /* Check seq number */
-        uint32_t rx_seq = 0;
-        byteToUINT_32(recvData + 2, &rx_seq);
-        if(seq != rx_seq){
-            return R_UART_UNSPECIFIED_FAILURE;
-        }
+
         
-        /* Check result code */
-        byteToUINT_32(recvData + 10, &r);
+        printf("FnID=%u ret=%u\n",fnID, r);
     }
 
-    printf("FnID=%u ret=%u\n",fnID, r);
     
     return r;
 }
@@ -230,6 +238,8 @@ FLR_RESULT dispatcher(FLR_FUNCTION fnID, const uint8_t *sendData, const uint32_t
 
 void boson_init(void){
 
+    boson_boson_reset_out_write(0);
+    busy_wait(500);
     boson_boson_reset_out_write(1);
     boson_uart_init();
     busy_wait(4500);
@@ -245,20 +255,24 @@ void boson_init(void){
 
     if(r == R_SUCCESS){
         /* Basic setup of boson core */
-        dispatcher(DVO_SETDISPLAYMODE, (const uint8_t[]){UINT32_LE(0)}, 4);
-        dispatcher(TELEMETRY_SETSTATE, (const uint8_t[]){UINT32_LE(0)}, 4); /* Disable Telemetry Line */
-        dispatcher(TELEMETRY_SETLOCATION, (const uint8_t[]){UINT32_LE(0)}, 4); /* Telemetry Line Top */
-        dispatcher(DVO_SETANALOGVIDEOSTATE, (const uint8_t[]){UINT32_LE(0)}, 4); /* Analog Off */
-        dispatcher(DVO_SETOUTPUTFORMAT, (const uint8_t[]){UINT32_LE(0)}, 4); /* Mode: RGB */
-        dispatcher(DVO_SETOUTPUTYCBCRSETTINGS, (const uint8_t[]){UINT32_LE(0),UINT32_LE(1),UINT32_LE(0)}, 12); /* CbCr Order: Cb -> Cr */
-        dispatcher(DVO_SETOUTPUTRGBSETTINGS, (const uint8_t[]){UINT32_LE(0),UINT32_LE(0)}, 8); /* RGB */
-        dispatcher(DVO_SETTYPE, (const uint8_t[]){UINT32_LE(0)}, 4); /* Type: MONO16 */
-        dispatcher(DVO_SETVIDEOSTANDARD, (const uint8_t[]){UINT32_LE(1)}, 4); /* PAL: Enabled */
+        // dispatcher(TESTRAMP_SETTYPE, (const uint8_t[]){0, UINT32_LE(FLR_TESTRAMP_INCREMENTING)}, 5 );
+        // dispatcher(GAO_SETTESTRAMPSTATE, (const uint8_t[]){UINT32_LE(FLR_ENABLE)}, 4);
+        
+        dispatcher(TELEMETRY_SETSTATE, (const uint8_t[]){UINT32_LE(FLR_DISABLE)}, 4); 
+        dispatcher(TELEMETRY_SETLOCATION, (const uint8_t[]){UINT32_LE(FLR_TELEMETRY_LOC_TOP)}, 4); 
+        
+        dispatcher(DVO_SETDISPLAYMODE, (const uint8_t[]){UINT32_LE(FLR_DVO_CONTINUOUS)}, 4); /* FLR_DVO_CONTINUOUS */
+        dispatcher(DVO_SETANALOGVIDEOSTATE, (const uint8_t[]){UINT32_LE(FLR_DISABLE)}, 4); /* Analog Off */
+        dispatcher(DVO_SETOUTPUTFORMAT, (const uint8_t[]){UINT32_LE(FLR_DVO_IR16)}, 4); /* Mode: IR16 */
+        dispatcher(DVO_SETTYPE, (const uint8_t[]){UINT32_LE(FLR_DVO_TYPE_MONO16)}, 4); /* Type: MONO16 */
+        dispatcher(DVO_SETVIDEOSTANDARD, (const uint8_t[]){UINT32_LE(FLR_DVO_NTSC)}, 4); /* Video Standard NTSC, 60/30Hz */
         dispatcher(DVO_APPLYCUSTOMSETTINGS, 0, 0);
         //dispatcher(COLORLUT_SETID, (const uint8_t[]){UINT32_LE(_settings.pallete)}, 4); /* Colour LUT: Ironbow */
         busy_wait(10);
-        dispatcher(COLORLUT_SETCONTROL, (const uint8_t[]){UINT32_LE(1)}, 4);
-        dispatcher(GAO_SETAVERAGERSTATE, (const uint8_t[]){UINT32_LE(1)}, 4);
+        dispatcher(COLORLUT_SETCONTROL, (const uint8_t[]){UINT32_LE(FLR_DISABLE)}, 4);
+        dispatcher(GAO_SETAVERAGERSTATE, (const uint8_t[]){UINT32_LE(FLR_ENABLE)}, 4);
+
+
 
 
         busy_wait(500);

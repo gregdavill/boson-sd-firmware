@@ -242,7 +242,7 @@ class StreamReader(Module, AutoCSR):
 
         self.source_csr = CSRStorage(4, name="source_mux")
 
-        enabled = Signal()
+        self.enabled = enabled = Signal()
         overflow = Signal()
         underflow = Signal()
         self.comb += [

@@ -17,7 +17,7 @@ from litex.soc.integration.soc_core import *
 from litex.soc.integration.soc import SoCRegion
 from litex.soc.integration.builder import *
 
-from litex.soc.interconnect.stream import Pipeline, StrideConverter, Endpoint, AsyncFIFO
+from litex.soc.interconnect.stream import Pipeline, StrideConverter, Endpoint, AsyncFIFO, Gate
 from litex.soc.interconnect.csr import *
 
 from migen.genlib.cdc import PulseSynchronizer
@@ -80,37 +80,35 @@ class BosonCapture(Module, AutoCSR):
         self.submodules += sc
 
         # FIFO
-        fifo = AsyncFIFO([('data', 32)], 512)
+        fifo = AsyncFIFO([('data', 32)], 512, buffered=True)
         fifo = ClockDomainsRenamer({"write": "pix", "read": "sys"})(fifo)
         fifo = ResetInserter(["pix", "sys"])(fifo)
         self.submodules += fifo
 
-        # self.comb += [
-        #     fifo.sink.data.eq(boson.source.data),
-        #     fifo.sink.valid.eq(boson.source.valid),
-        # ]
-        self.submodules.pipeline = pipeline = Pipeline(sc, fifo)
-        self.comb += [
-            boson.source.connect(pipeline.sink),
-        ]
+        gate = Gate([('data', 32)], True)
+        self.submodules += gate
 
+        self.submodules.pipeline = pipeline = Pipeline(boson, sc, fifo, gate)
 
         self.sync += timeline(fe.sof, 
             [
-                (10, [start.eq(1)]),
-                (11, [start.eq(0)]),
+                (50, [start.eq(1)]),
+                (51, [start.eq(0)]),
             ],
         )
 
-        ps = PulseSynchronizer("sys", "pix")
-        self.comb += [
-            ps.i.eq(fifo.reset_sys),
-            fifo.reset_pix.eq(ps.o),
-
-            fifo.reset_sys.eq(fe.sof),
-            sc.reset.eq(ps.o),
+        enabled = Signal()
+        self.sync += [
+            If(fe.sof & reader.enabled,
+                enabled.eq(1),
+            ).Elif(~reader.enabled,
+                enabled.eq(0)
+            )
         ]
-        self.submodules += ps
+
+        self.comb += [
+            gate.enable.eq(enabled | fifo.source.first)
+        ]
 
         reader.add_source(pipeline.source, "boson", start)
 

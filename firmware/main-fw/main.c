@@ -149,6 +149,8 @@ int main(int i, char **c)
 		else{
 			printf("hres=%u, vres=%u\n", boson_resolution_hres_read(), boson_resolution_vres_read());
 		}
+
+		break;
 	}
 
 
@@ -194,7 +196,7 @@ int main(int i, char **c)
 
 		
 
-		for( unsigned int i = 0; i < 1; i++){
+		for( unsigned int i = 0; i < 3; i++){
 
 			
 			timer1_update_value_write(1);
@@ -214,7 +216,7 @@ int main(int i, char **c)
 			reader_reset_write(1);
 			reader_external_sync_write(1);
 			reader_burst_size_write(burst);
-			reader_transfer_size_write(4*1024*1024/4);
+			reader_transfer_size_write(640*1024/4);
 			reader_start_address_write(HYPERRAM_BASE>>2);
 			reader_enable_write(1);
 
@@ -236,7 +238,7 @@ int main(int i, char **c)
 
 			busy_wait(100);
 			
-				dump_bytes(HYPERRAM_BASE + 32*1024, 16*16, HYPERRAM_BASE);
+				dump_bytes(HYPERRAM_BASE, 16*16, HYPERRAM_BASE);
 				//busy_wait(500);
 				break;
 			}
@@ -244,7 +246,7 @@ int main(int i, char **c)
 
 			fr = f_open(&Fil, name, FA_WRITE | FA_CREATE_ALWAYS);	/* Open a file */
 			
-			DWORD filesize = 4*1024*1024;
+			DWORD filesize = 641*1024;
 			ptr = HYPERRAM_BASE;
 
 			if (fr == FR_OK) {

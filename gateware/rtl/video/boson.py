@@ -30,6 +30,8 @@ class BosonDataRx(Module):
             source.data.eq(pads.data),
             source.valid.eq(pads.valid),
 
+            source.first.eq(pads.valid & (pixel_counter == 0)),
+
             vsync_.eq(pads.vsync),
             If(vsync_falling,
                 pixel_counter.eq(0),
@@ -42,7 +44,7 @@ class BosonDataRx(Module):
 class BosonClk(Module):
     def __init__(self, clk_pad, platform):
         self.clock_domains.cd_pix = ClockDomain()        
-        self.comb += self.cd_pix.clk.eq(~clk_pad)
+        self.comb += self.cd_pix.clk.eq(clk_pad)
         
         platform.add_period_constraint(self.cd_pix.clk, period_ns(27e6))
 
