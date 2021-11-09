@@ -33,6 +33,9 @@ jobs:
           pushd gateware
           python3 boson-sd-bitstream.py --lx-check-deps
           python3 boson-sd-bitstream.py --lx-print-env
-          python3 boson-sd-bitstream.py
+          python3 boson-sd-bitstream.py --target boot
+          python3 boson-sd-bitstream.py --target boot --update-firmware
+          python3 boson-sd-bitstream.py --target main
+          python3 boson-sd-bitstream.py --target main --update-firmware
           popd
 

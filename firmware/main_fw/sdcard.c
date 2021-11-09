@@ -82,10 +82,6 @@ static WORD CardRCA;	   /* Assigned RCA */
 static BYTE CardType,	  /* Card type flag */
 	CardInfo[16 + 16 + 4]; /* CSD(16), CID(16), OCR(4) */
 
-/* Block transfer buffer (located in USB RAM) */
-//static DWORD blockBuff[128] __attribute__((section(".scratchpadRam0")));
-
-
 /*-----------------------------------------------------------------------*/
 /* Helpers                                                               */
 /*-----------------------------------------------------------------------*/
@@ -372,7 +368,7 @@ int sdcard_stop_transmission(void) {
 #ifdef SDCARD_DEBUG
 	printf("CMD12: STOP_TRANSMISSION\n");
 #endif
-	dly_us(400);
+	dly_us(100);
 	return sdcard_send_command(0, 12, SDCARD_CTRL_RESPONSE_SHORT_BUSY);
 }
 
@@ -571,7 +567,11 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 				}
 				dly_us(10);
 			}
-			printf(".");
+
+			/* DMA is "connected" to the sdcore when it's enabled. Keep this delay here to ensure 
+			 * that we stay connected while the fifo still has data in it. 
+			 */
+			dly_us(100);
 			writer_enable_write(0);
 		}
 		

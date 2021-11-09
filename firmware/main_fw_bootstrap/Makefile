@@ -14,13 +14,13 @@ OBJECTS=main.o \
 		boot.o
 		
 
-vpath %.ld $(BOOTER_DIRECTORY)
-vpath %.c $(BOOTER_DIRECTORY)
-vpath %.S $(BOOTER_DIRECTORY)
+vpath %.ld $(MAIN_FW_BOOTSTRAP_DIRECTORY)
+vpath %.c $(MAIN_FW_BOOTSTRAP_DIRECTORY)
+vpath %.S $(MAIN_FW_BOOTSTRAP_DIRECTORY)
 vpath %.a $(PACKAGES:%=../%)
 
-all: booter.bin
-	$(TRIPLE)-size booter.elf
+all: main_fw_bootstrap.bin
+	$(TRIPLE)-size main_fw_bootstrap.elf
 
 # pull in dependency info for *existing* .o files
 -include $(OBJECTS:.o=.d)
@@ -34,11 +34,11 @@ else
 	$(PYTHON) -m litex.soc.software.mkmscimg $@
 endif
 
-booter.elf: linker.ld $(OBJECTS)
+main_fw_bootstrap.elf: linker.ld $(OBJECTS)
 
 %.elf: crt0.o
 	$(CC) $(LDFLAGS) \
-		-T $(BOOTER_DIRECTORY)/linker.ld \
+		-T $(MAIN_FW_BOOTSTRAP_DIRECTORY)/linker.ld \
 		-N -o $@ \
 		crt0.o \
 		$(OBJECTS) \

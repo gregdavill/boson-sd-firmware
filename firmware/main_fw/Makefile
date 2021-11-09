@@ -1,7 +1,7 @@
 include ../include/generated/variables.mak
 include $(SOC_DIRECTORY)/software/common.mak
 
-CFLAGS += -O2 -I$(MAIN-FW_DIRECTORY)/include -fdata-sections -ffunction-sections
+CFLAGS += -O2 -I$(MAIN_FW_DIRECTORY)/include -fdata-sections -ffunction-sections
 
 OBJECTS=main.o \
 		time.o 	\
@@ -10,12 +10,14 @@ OBJECTS=main.o \
 		sdcard.o \
 		cache.o \
 		rb_tree.o \
-		boson.o flirCRC.o Serializer_BuiltIn.o \
+		boson.o \
+		flirCRC.o \
+		Serializer_BuiltIn.o \
 		hyperram.o
 
-vpath % $(MAIN-FW_DIRECTORY) $(MAIN-FW_DIRECTORY)/boson $(MAIN-FW_DIRECTORY)/fatfs/source
+vpath % $(MAIN_FW_DIRECTORY) $(MAIN_FW_DIRECTORY)/boson $(MAIN_FW_DIRECTORY)/fatfs/source
 
-all: main-fw.bin size
+all: main_fw.bin size
 
 %.bin: %.elf
 	$(OBJCOPY) -O binary $< $@
@@ -28,11 +30,11 @@ else
 	$(PYTHON) -m litex.soc.software.mkmscimg $@
 endif
 
-main-fw.elf:
+main_fw.elf:
 
 
-main-fw.elf: crt0.o $(MAIN-FW_DIRECTORY)/linker.ld $(OBJECTS)
-	$(CC) $(LDFLAGS) -T $(MAIN-FW_DIRECTORY)/linker.ld -N -o $@ \
+main_fw.elf: crt0.o $(MAIN_FW_DIRECTORY)/linker.ld $(OBJECTS)
+	$(CC) $(LDFLAGS) -T $(MAIN_FW_DIRECTORY)/linker.ld -N -o $@ \
 		crt0.o \
 		$(OBJECTS) \
 		$(PACKAGES:%=-L../%) \
@@ -57,10 +59,10 @@ crt0.o: $(CPU_DIRECTORY)/crt0.S
 	$(assemble)
 
 clean:
-	$(RM) $(OBJECTS) main-fw.elf main-fw.bin .*~ *~
+	$(RM) $(OBJECTS) main_fw.elf main_fw.bin .*~ *~
 
 size:
-	$(TARGET_PREFIX)size main-fw.elf
+	$(TARGET_PREFIX)size main_fw.elf
 
 
 .PHONY: all clean
