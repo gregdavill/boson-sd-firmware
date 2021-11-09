@@ -417,7 +417,7 @@ def main():
     os.system(f"ecpbram  --input {input_config} --output {output_config} --from {rand_rom} --to {blkram_init}")
 
     # create a compressed bitstream
-    os.system(f"ecppack --freq 38.8 --compress {'--bootaddr {:x}'.format(gateware_offset) if args.target == 'boot' else ''} --input {output_config} --bit {output_bit}")
+    os.system(f"ecppack --freq 38.8 --compress {'--bootaddr 0x{:x}'.format(gateware_offset) if args.target == 'boot' else ''} --input {output_config} --bit {output_bit}")
 
     if args.target == 'main':
         
@@ -443,7 +443,7 @@ def main():
     else:
         print(f"""Boson SD bootloader build complete!  
         
-    boson_sd_bootloader_bitstream.bit.dfu size={os.path.getsize(output_bit) / 1024 :.2f}KB ({os.path.getsize(output_bit)} bytes) 
+    boson_sd_bootloader_bitstream.bit size={os.path.getsize(output_bit) / 1024 :.2f}KB ({os.path.getsize(output_bit)} bytes) 
         FLASH Sector Usage: {math.ceil(os.path.getsize(output_bit) / (64*1024)) :} / {1024 // 64}
         """)
 
