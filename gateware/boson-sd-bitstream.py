@@ -380,6 +380,8 @@ def main():
         vns = builder.build()
         soc.do_exit(vns)
 
+    gateware_offset = 0x00080000
+
     if args.target == 'main':
         # create a compressed bitstream
         output_bit = os.path.join(builder.output_dir, "gateware", "boson_sd_main_bitstream.bit")
@@ -387,7 +389,6 @@ def main():
 
         # Determine Bitstream size
         stage_1_filesize = os.path.getsize(output_bit)
-        gateware_offset = 0x00080000
         alignment = 65536 - 1 # FLASH Block Size 
         firmware_offset = (stage_1_filesize + alignment) & ~(alignment)  # Add padding, align FW to next FLASH 64K block
         firmware_offset += gateware_offset  # bitstream offset
