@@ -103,7 +103,7 @@ int sdcard_wait_cmd_done(void) {
 	for (;;) {
 		event = sdcore_cmd_event_read();
 #ifdef SDCARD_DEBUG
-		printf("cmdevt: %08x\n", event);
+		//printf("cmdevt: %08x\n", event);
 #endif
 		busy_wait_us(20);
 		if (event & 0x1)
@@ -132,7 +132,7 @@ int sdcard_wait_data_done(void) {
 	for (;;) {
 		event = sdcore_data_event_read();
 #ifdef SDCARD_DEBUG
-		printf("dataevt: %08x\n", event);
+		//printf("dataevt: %08x\n", event);
 #endif
 		if (event & 0x1)
 			break;

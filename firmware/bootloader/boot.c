@@ -43,6 +43,73 @@
 uint32_t start_load_addr = 0;
 uint32_t max_load_addr = 0;
 
+
+
+static
+void put_rc (FRESULT rc)
+{
+	const char *p;
+	static const char str[] =
+		"OK\0DISK_ERR\0INT_ERR\0NOT_READY\0NO_FILE\0NO_PATH\0INVALID_NAME\0"
+		"DENIED\0EXIST\0INVALID_OBJECT\0WRITE_PROTECTED\0INVALID_DRIVE\0"
+		"NOT_ENABLED\0NO_FILE_SYSTEM\0MKFS_ABORTED\0TIMEOUT\0LOCKED\0"
+		"NOT_ENOUGH_CORE\0TOO_MANY_OPEN_FILES\0FR_INVALID_PARAMETER\0";
+	FRESULT i;
+
+	for (p = str, i = 0; i != rc && *p; i++) {
+		while(*p++);
+	}
+	printf("rc=%u FR_%s\n", rc, p);
+}
+
+#define FATFS_ERR(EXP) \
+do {\
+	FRESULT rc; \
+	if((rc = EXP) != FR_OK){ \
+		printf( "fatfs: ("#EXP ") ", EXP); \
+		put_rc(rc); \
+	} \
+} while(0);
+
+
+#define NUMBER_OF_BYTES_ON_A_LINE 16
+void dump_bytes(unsigned int *ptr, int count, unsigned long addr)
+{
+	char *data = (char *)ptr;
+	int line_bytes = 0, i = 0;
+
+	fputs("Memory dump:", stdout);
+	while (count > 0) {
+		line_bytes =
+			(count > NUMBER_OF_BYTES_ON_A_LINE)?
+				NUMBER_OF_BYTES_ON_A_LINE : count;
+
+		printf("\n0x%08lx  ", addr);
+		for (i = 0; i < line_bytes; i++)
+			printf("%02x ", *(unsigned char *)(data+i));
+
+		for (; i < NUMBER_OF_BYTES_ON_A_LINE; i++)
+			printf("   ");
+
+		printf(" ");
+
+		for (i = 0; i<line_bytes; i++) {
+			if ((*(data+i) < 0x20) || (*(data+i) > 0x7e))
+				printf(".");
+			else
+				printf("%c", *(data+i));
+		}
+
+		for (; i < NUMBER_OF_BYTES_ON_A_LINE; i++)
+			printf(" ");
+
+		data += (char)line_bytes;
+		count -= line_bytes;
+		addr += line_bytes;
+	}
+	printf("\n");
+}
+
 /*-----------------------------------------------------------------------*/
 /* Boot                                                                  */
 /*-----------------------------------------------------------------------*/
@@ -128,13 +195,14 @@ static int copy_file_from_sdcard_to_ram(const char * filename, unsigned long ram
 	uint32_t offset;
 	unsigned long length;
 
-	fr = f_mount(&fs, "", 1);
-	if (fr != FR_OK)
+	FATFS_ERR(fr = f_mount(&fs, "0:", 1));
+	if (fr != FR_OK){
 		return 0;
-	fr = f_open(&file, filename, FA_READ);
+	}
+	FATFS_ERR(fr = f_open(&file, filename, FA_READ));
 	if (fr != FR_OK) {
 		printf("%s file not found.\n", filename);
-		f_mount(0, "", 0);
+		FATFS_ERR(f_unmount("0:"));
 		return 0;
 	}
 
@@ -159,7 +227,7 @@ static int copy_file_from_sdcard_to_ram(const char * filename, unsigned long ram
 	printf("\n");
 
 	f_close(&file);
-	f_mount(0, "", 0);
+	FATFS_ERR(f_unmount("0:"));
 
 	return 1;
 }
@@ -189,21 +257,23 @@ static void sdcardboot_from_json(const char * filename)
 	uint8_t boot_addr_found = 0;
 
 	/* Read JSON file */
-	fr = f_mount(&fs, "", 1);
+	FATFS_ERR(fr = f_mount(&fs, "0:", 1));
 	if (fr != FR_OK)
 		return;
-	fr = f_open(&file, filename, FA_READ);
+	FATFS_ERR(fr = f_open(&file, filename, FA_READ));
 	if (fr != FR_OK) {
 		printf("%s file not found.\n", filename);
-		f_mount(0, "", 0);
+		f_unmount("0:");
 		return;
 	}
 
-	fr = f_read(&file, json_buffer, sizeof(json_buffer), (UINT *) &length);
+	FATFS_ERR(fr = f_read(&file, json_buffer, sizeof(json_buffer), (UINT *) &length));
 
 	/* Close JSON file */
-	f_close(&file);
-	f_mount(0, "", 0);
+	FATFS_ERR(f_close(&file));
+
+	sdcard_go_inactive_state();
+	FATFS_ERR(f_unmount("0:"));
 
 	/* Parse JSON file */
 	jsmntok_t t[32];
@@ -242,6 +312,7 @@ static void sdcardboot_from_json(const char * filename)
 				boot_r3 = strtoul(json_value, NULL, 0);
 			/* Copy Image from SDCard to address */
 			} else {
+				printf("Loading %s @0x%08x\n", json_name, strtoul(json_value, NULL, 0));
 				result = copy_file_from_sdcard_to_ram(json_name, strtoul(json_value, NULL, 0));
 				if (result == 0)
 					return;
@@ -279,11 +350,11 @@ void sdcardboot(void)
 	printf("Booting from boot.json...\n");
 	sdcardboot_from_json("boot.json");
 
-	/* Boot from boot.bin */
-	printf("Booting from boot.bin...\n");
-	sdcardboot_from_bin("boot.bin");
 
 	/* Boot failed if we are here... */
 	printf("SDCard boot failed.\n");
+
+	sdcard_go_idle();
+	busy_wait(20);
 }
 #endif

@@ -1,7 +1,7 @@
 include ../include/generated/variables.mak
 include $(SOC_DIRECTORY)/software/common.mak
 
-CFLAGS += -O2 -I$(MAIN_FW_DIRECTORY)/include -I$(MAIN_FW_DIRECTORY)/../deps/fatfs/source -fdata-sections -ffunction-sections
+CFLAGS += -O2 -I$(MAIN_FW_DIRECTORY)/include -I$(MAIN_FW_DIRECTORY)/../deps/fatfs/source -fdata-sections -ffunction-sections -DSDCARD_DEBUG
 
 OBJECTS=main.o \
 		time.o 	\

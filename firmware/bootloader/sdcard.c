@@ -31,7 +31,7 @@
 #endif
 
 #ifndef SDCARD_CLK_FREQ
-#define SDCARD_CLK_FREQ 30000000UL
+#define SDCARD_CLK_FREQ 25000000UL
 #endif
 
 /* MMC card type flags (MMC_GET_TYPE) */
@@ -103,7 +103,7 @@ int sdcard_wait_cmd_done(void) {
 	for (;;) {
 		event = sdcore_cmd_event_read();
 #ifdef SDCARD_DEBUG
-		printf("cmdevt: %08x\n", event);
+		//printf("cmdevt: %08x\n", event);
 #endif
 		busy_wait_us(20);
 		if (event & 0x1)
@@ -132,7 +132,7 @@ int sdcard_wait_data_done(void) {
 	for (;;) {
 		event = sdcore_data_event_read();
 #ifdef SDCARD_DEBUG
-		printf("dataevt: %08x\n", event);
+		//printf("dataevt: %08x\n", event);
 #endif
 		if (event & 0x1)
 			break;
@@ -260,6 +260,10 @@ int sdcard_select_card(uint16_t rca) {
 	printf("CMD7: SELECT_CARD\n");
 #endif
 	return sdcard_send_command(rca << 16, 7, SDCARD_CTRL_RESPONSE_SHORT_BUSY);
+}
+
+int sdcard_go_inactive_state() {
+	return sdcard_send_command(CardRCA << 16, 7, SDCARD_CTRL_RESPONSE_SHORT_BUSY);
 }
 
 int sdcard_app_set_bus_width(void) {
@@ -501,6 +505,8 @@ void sdcard_read(uint32_t block, uint32_t count, uint8_t* buf)
 		buf   += 512*nblocks;
 		count -= nblocks;
 	}
+
+	sdblock2mem_dma_enable_write(0);
 	
 	/* Flush caches */
 	flush_cpu_dcache();
@@ -682,10 +688,6 @@ DSTATUS disk_initialize(BYTE pdrv)
 
 	printf("disk_initialize()\n");
 
-#ifdef USE_CACHE
-	sd_cache_init(HYPERRAM_BASE + HYPERRAM_SIZE/2, HYPERRAM_SIZE/512/2);
-#endif
-
 	/* Set SD clk freq to Initialization frequency */
 	sdcard_set_clk_freq(SDCARD_CLK_FREQ_INIT, 0);
 	dly_us(1000);
@@ -693,7 +695,7 @@ DSTATUS disk_initialize(BYTE pdrv)
 	for (timeout=1000; timeout>0; timeout--) {
 		/* Set SDCard in SPI Mode (generate 80 dummy clocks) */
 		sdphy_init_initialize_write(1);
-		dly_us(100);
+		dly_us(1000);
 
 		/* Set SDCard in Idle state */
 		if (sdcard_go_idle() == SD_OK)

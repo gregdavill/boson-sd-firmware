@@ -145,12 +145,12 @@ class Boson_SoC(SoCCore):
             platform,
             clk_freq=sys_clk_freq,
             cpu_type='vexriscv',
-            cpu_variant='standard',
+            cpu_variant='lite',
             with_uart=False,
             csr_data_width=32,
             ident_version=False,
-            wishbone_timeout_cycles=1024*8,
-            integrated_sram_size=84 * 1024,
+            wishbone_timeout_cycles=128,
+            integrated_sram_size=96 * 1024,
             cpu_reset_address=self.mem_map['sram'],
         )
 
@@ -273,7 +273,7 @@ def main():
     builder = Builder(soc, output_dir="build", csr_csv="build/csr.csv")
 
     
-    rand_rom = os.path.join(builder.output_dir, "gateware", "rand.data")
+    rand_rom = os.path.join(builder.output_dir, "gateware", "boot-rand.data")
 
     input_config = os.path.join(builder.output_dir, "gateware", f"{soc.platform.name}.config")
     output_config = os.path.join(builder.output_dir, "gateware", f"{soc.platform.name}_patched.config")

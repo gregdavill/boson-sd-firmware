@@ -3688,16 +3688,16 @@ FRESULT f_open_ex (
 		//if(dp->obj.fs == 0){
 			dp->obj.fs = fs;
 			//printf(".");
-			timer1_update_value_write(1);
-			uint32_t t = timer1_value_read();
+			// timer1_update_value_write(1);
+			// uint32_t t = timer1_value_read();
 			res = follow_path(dp, path);	/* Follow the file path */
 
 			//printf("d:%08x ", dp->obj.sclust);
-			timer1_update_value_write(1);
-			t = t - timer1_value_read();
+			// timer1_update_value_write(1);
+			// t = t - timer1_value_read();
 
-			t /= (75000000UL / (int)1e6);
-			printf(" \e[92;1m[%01lu.%06lu]\e[0m - ", t / (int)1e6 , t % (int)1e6);
+			// t /= (75000000UL / (int)1e6);
+			// printf(" \e[92;1m[%01lu.%06lu]\e[0m - ", t / (int)1e6 , t % (int)1e6);
 		//}
 		
 

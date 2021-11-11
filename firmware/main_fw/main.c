@@ -184,6 +184,19 @@ int main(int i, char **c)
  	printf("      Migen git sha1: "MIGEN_GIT_SHA1"\n");
  	printf("      LiteX git sha1: "LITEX_GIT_SHA1"\n");
 
+	FATFS FatFs;		/* FatFs work area needed for each volume */
+	FIL Fil;			/* File object needed for each open file */
+	UINT bw, br;
+	FRESULT fr;
+
+	volatile uint8_t* ptr = HYPERRAM_BASE;
+
+	printf("&FatFs = %08x\n", &FatFs);
+	printf("&Fil = %08x\n", &Fil);
+
+
+	FATFS_ERR(fr = f_mount(&FatFs, "", 1));		/* Give a work area to the default drive */
+	
 	printf("--==========-- \e[1mBoson Init\e[0m ===========--\n");
  	boson_init();
 
@@ -212,18 +225,6 @@ int main(int i, char **c)
 
 	
 
-	FATFS FatFs;		/* FatFs work area needed for each volume */
-	FIL Fil;			/* File object needed for each open file */
-	UINT bw, br;
-	FRESULT fr;
-
-	volatile uint8_t* ptr = HYPERRAM_BASE;
-
-	printf("&FatFs = %08x\n", &FatFs);
-	printf("&Fil = %08x\n", &Fil);
-
-
-	FATFS_ERR(fr = f_mount(&FatFs, "", 1));		/* Give a work area to the default drive */
 
 	if (fr == FR_OK) {
 

@@ -50,7 +50,7 @@ __attribute__((naked)) int main(int i, char **c)
 
   time_init();
   
-	printf("\n\n\n\e[92;1m    - Boson Booter - \e[0m\n");
+	printf("\n\n\n\e[92;1m    - Boson SD Bootloader - \e[0m\n");
  	printf("\n (c) Copyright 2021 Greg Davill \n");
  	printf(" bootloader built: "__DATE__ " " __TIME__ " \n\n");
 
@@ -61,8 +61,11 @@ __attribute__((naked)) int main(int i, char **c)
 
 	sdcardboot();
 
+
   /* Set LED to OFF */
 	leds_out_write(0);
+
+  uart_sync();
 
   /* Reboot into user gateware */
   while(1){
