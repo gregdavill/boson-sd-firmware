@@ -16,8 +16,8 @@
 #include <generated/soc.h>
 #include <system.h>
 
-#include "fatfs/source/ff.h"
-#include "fatfs/source/diskio.h" /* Common include file for FatFs and disk I/O layer */
+#include "ff.h"
+#include "diskio.h" /* Common include file for FatFs and disk I/O layer */
 #include "sdcard.h"
 
 //#define USE_CACHE

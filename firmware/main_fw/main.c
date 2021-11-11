@@ -13,7 +13,7 @@
 #include <generated/git.h>
 
 
-#include "fatfs/source/ff.h"
+#include "ff.h"
 
 #include <irq.h>
 #include <uart.h>

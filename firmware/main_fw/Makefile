@@ -1,7 +1,7 @@
 include ../include/generated/variables.mak
 include $(SOC_DIRECTORY)/software/common.mak
 
-CFLAGS += -O2 -I$(MAIN_FW_DIRECTORY)/include -fdata-sections -ffunction-sections
+CFLAGS += -O2 -I$(MAIN_FW_DIRECTORY)/include -I$(MAIN_FW_DIRECTORY)/../deps/fatfs/source -fdata-sections -ffunction-sections
 
 OBJECTS=main.o \
 		time.o 	\
@@ -15,7 +15,7 @@ OBJECTS=main.o \
 		Serializer_BuiltIn.o \
 		hyperram.o
 
-vpath % $(MAIN_FW_DIRECTORY) $(MAIN_FW_DIRECTORY)/boson $(MAIN_FW_DIRECTORY)/fatfs/source
+vpath % $(MAIN_FW_DIRECTORY) $(MAIN_FW_DIRECTORY)/boson $(MAIN_FW_DIRECTORY)/../deps/fatfs/source
 
 all: main_fw.bin size
 
