@@ -190,6 +190,8 @@ class Boson_SoC(SoCCore):
 
         # Boson -----------------------------------------------------------------------------------
         # self.submodules.boson = BosonCapture(platform, reader)
+        boson = platform.request("boson")
+        self.comb += boson.reset.eq(0)
         
         # IO/UART ----------------------------------------------------------------------------------
         io = platform.request("io")
