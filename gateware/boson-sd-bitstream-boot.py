@@ -134,10 +134,10 @@ class Boson_SoC(SoCCore):
     interrupt_map = {}
     interrupt_map.update(SoCCore.interrupt_map)
 
-    def __init__(self, target):
+    def __init__(self):
 
         self.platform = platform = boson_frame_grabber_r0d3.Platform()
-        self.target = target
+        self.platform.name = "boson_sd_boot"
 
         platform.sys_clk_freq = sys_clk_freq = 70e6
         SoCCore.__init__(
@@ -150,19 +150,19 @@ class Boson_SoC(SoCCore):
             csr_data_width=32,
             ident_version=False,
             wishbone_timeout_cycles=1024*8,
-            integrated_sram_size=(64 if target == 'main' else 96) * 1024,
+            integrated_sram_size=84 * 1024,
             cpu_reset_address=self.mem_map['sram'],
         )
 
         # Toolchain config
         platform.toolchain.build_template[0] = "yosys -q -l {build_name}.rpt {build_name}.ys"
-        platform.toolchain.build_template[1] += f" --log {platform.name}-nextpnr.log --router router1"
+        platform.toolchain.build_template[1] += f" --log {platform.name}-nextpnr.log --router router2 --router2-tmg-ripup "
         platform.toolchain.build_template[1] += f" --report {platform.name}-timing.json"
+        # These options generally gives higher freq
         platform.toolchain.yosys_template.insert(-1, "scratchpad -copy abc9.script.flow3 abc9.script")
         platform.toolchain.yosys_template.insert(-1, "scratchpad -set abc9.D {}".format(int((1e12/sys_clk_freq)/2)))
-        platform.toolchain.yosys_template[-1] += ' -abc9'  # abc2/nowidelut generally give higher freq
+        platform.toolchain.yosys_template[-1] += ' -abc9'  
 
-        self.platform.name = "boson_sd_{}".format(target)
 
         # crg -------------------------------------------------------------------------------------
         self.submodules.crg = _CRG(platform, sys_clk_freq)
@@ -181,22 +181,15 @@ class Boson_SoC(SoCCore):
         from litespi.opcodes import SpiNorFlashOpCodes as Codes
         self.add_spi_flash(mode="4x", module=MX25R1635F(Codes.READ_1_1_4), with_master=True)
 
-        # HyperRAM with DMAs -----------------------------------------------------------------------
-        self.submodules.writer = writer = StreamWriter()
-        self.submodules.reader = reader = StreamReader()
-        self.submodules.hyperram = hyperram = StreamableHyperRAM(platform.request("hyper_ram"), devices=[reader, writer])
+        # HyperRAM ---------------------------------------------------------------------------------
+        self.submodules.hyperram = hyperram = StreamableHyperRAM(platform.request("hyper_ram"), devices=[])
         self.register_mem("hyperram", self.mem_map['hyperram'], hyperram.bus, size=0x800000)
 
-        # PRBS Tester, used to test HyperRAM DMAs --------------------------------------------------
-        self.submodules.prbs = PRBSStream()
-        reader.add_source(self.prbs.source.source, "prbs")
-        writer.add_sink(self.prbs.sink.sink, "prbs")
-
         # SDMMC ------------------------------------------------------------------------------------
-        self.add_sdcard(name="sdmmc", mode="read+write", use_emulator=False, software_debug=False)
+        self.add_sdcard(name="sdmmc", mode="read", use_emulator=False, software_debug=False)
 
         # Boson -----------------------------------------------------------------------------------
-        self.submodules.boson = BosonCapture(platform, reader)
+        # self.submodules.boson = BosonCapture(platform, reader)
         
         # IO/UART ----------------------------------------------------------------------------------
         io = platform.request("io")
@@ -242,75 +235,6 @@ class Boson_SoC(SoCCore):
 
         self.add_constant("GIT_SHA1", get_git_revision())
 
-    # Add SDCard -----------------------------------------------------------------------------------
-    def add_sdcard(self, name="sdcard", mode="read+write", use_emulator=False, software_debug=False):
-        # Imports.
-        from litesdcard.emulator import SDEmulator
-        from litesdcard.phy import SDPHY
-        from litesdcard.core import SDCore
-        from litesdcard.frontend.dma import SDBlock2MemDMA
-        from rtl.litesdcard_dma import SDMem2BlockDMA
-
-        # Checks.
-        assert mode in ["read", "write", "read+write"]
-
-        # Emulator / Pads.
-        if use_emulator:
-            sdemulator = SDEmulator(self.platform)
-            self.submodules += sdemulator
-            sdcard_pads = sdemulator.pads
-        else:
-            sdcard_pads = self.platform.request(name)
-
-        # Core.
-        self.check_if_exists("sdphy")
-        self.check_if_exists("sdcore")
-        self.submodules.sdphy  = SDPHY(sdcard_pads, self.platform.device, self.clk_freq, cmd_timeout=10e-3, data_timeout=10e-3)
-        self.submodules.sdcore = SDCore(self.sdphy)
-
-        # Block2Mem DMA.
-        if "read" in mode:
-            bus = wishbone.Interface(data_width=self.bus.data_width, adr_width=self.bus.address_width)
-            self.submodules.sdblock2mem = SDBlock2MemDMA(bus=bus, endianness=self.cpu.endianness)
-            self.comb += self.sdcore.source.connect(self.sdblock2mem.sink)
-            dma_bus = self.bus if not hasattr(self, "dma_bus") else self.dma_bus
-            dma_bus.add_master("sdblock2mem", master=bus)
-
-        # Mem2Block DMA.
-        if "write" in mode:
-            bus = wishbone.Interface(data_width=self.bus.data_width, adr_width=self.bus.address_width)
-            self.submodules.sdmem2block = SDMem2BlockDMA(bus=bus, endianness=self.cpu.endianness, writer=self.writer)
-            self.comb += self.sdmem2block.source.connect(self.sdcore.sink)
-            dma_bus = self.bus if not hasattr(self, "dma_bus") else self.dma_bus
-            dma_bus.add_master("sdmem2block", master=bus)
-
-        
-
-    def do_exit(self, vns):
-        if hasattr(self, "analyzer"):
-            self.analyzer.export_csv(vns, "test/analyzer.csv")
-
-    def PackageFirmware(self, builder):
-        # Remove un-needed sw packages
-        builder.software_packages = []
-        builder.add_software_package("libc")
-        builder.add_software_package("libcompiler_rt")
-        builder.add_software_package("libbase")
-
-        if self.target == 'main':
-            builder.add_software_package("main_fw", "{}/../firmware/main_fw".format(os.getcwd()))
-        elif self.target == 'boot':
-            builder.compile_software = False
-            return
-
-
-        builder._prepare_rom_software()
-        builder._generate_includes()
-        builder._generate_rom_software(compile_bios=False)
-
-        # lock out compiling firmware during build steps
-        builder.compile_software = False
-
     def PackageBooter(self, builder):
         self.finalize()
 
@@ -322,10 +246,7 @@ class Boson_SoC(SoCCore):
         builder.add_software_package("libbase")
         builder.add_software_package("libcompiler_rt")
 
-        if self.target == 'main':
-            builder.add_software_package("main_fw_bootstrap", "{}/../firmware/main_fw_bootstrap".format(os.getcwd()))
-        elif self.target == 'boot':
-            builder.add_software_package("bootloader", "{}/../firmware/bootloader".format(os.getcwd()))
+        builder.add_software_package("bootloader", "{}/../firmware/bootloader".format(os.getcwd()))
 
         builder._prepare_rom_software()
         builder._generate_includes()
@@ -346,24 +267,18 @@ def main():
                         default=False,
                         action='store_true',
                         help="compile firmware and update existing gateware")
-    parser.add_argument("--target",
-                        default='main',
-                        help="Select which SoC to build [boot, main]")
-    
     args = parser.parse_args()
 
-    soc = Boson_SoC(args.target)
+    soc = Boson_SoC()
     builder = Builder(soc, output_dir="build", csr_csv="build/csr.csv")
 
-    # Check if we have the correct files
-    firmware_file = os.path.join(builder.output_dir, "software", "main-fw", "main-fw.bin")
-
+    
     rand_rom = os.path.join(builder.output_dir, "gateware", "rand.data")
 
     input_config = os.path.join(builder.output_dir, "gateware", f"{soc.platform.name}.config")
     output_config = os.path.join(builder.output_dir, "gateware", f"{soc.platform.name}_patched.config")
 
-    # Create 256bytes rand fill for BRAM
+    # Create rand fill for BRAM
     if (os.path.exists(rand_rom) == False) or (args.update_firmware == False):
         os.makedirs(os.path.join(builder.output_dir, 'software'), exist_ok=True)
         os.makedirs(os.path.join(builder.output_dir, 'gateware'), exist_ok=True)
@@ -381,34 +296,11 @@ def main():
         soc.do_exit(vns)
 
     gateware_offset = 0x00080000
-
-    if args.target == 'main':
-        # create a compressed bitstream
-        output_bit = os.path.join(builder.output_dir, "gateware", "boson_sd_main_bitstream.bit")
-        os.system(f"ecppack --freq 38.8 --compress --input {input_config} --bit {output_bit}")
-
-        # Determine Bitstream size
-        stage_1_filesize = os.path.getsize(output_bit)
-        alignment = 65536 - 1 # FLASH Block Size 
-        firmware_offset = (stage_1_filesize + alignment) & ~(alignment)  # Add padding, align FW to next FLASH 64K block
-        firmware_offset += gateware_offset  # bitstream offset
-        print(f"Compressed file size: 0x{stage_1_filesize:0x}")
-        print(f"Placing firmware at: 0x{firmware_offset:0x}")
-
-        # Finalise the gateware aspects of the design.
-        # Alter the spiflash origin so that our actual address is valid in the linker when compiling
-        # Compile booter, it makes use of SPIFLASH_BASE for the boot address
-        soc.finalize()
-        soc.mem_regions['spiflash'].origin += firmware_offset
-    else:
-        output_bit = os.path.join(builder.output_dir, "gateware", "boson_sd_bootloader_bitstream.bit")
+    output_bit = os.path.join(builder.output_dir, "gateware", "boson_sd_bootloader_bitstream.bit")
 
     soc.PackageBooter(builder)
 
-    if args.target == 'main':
-        blkram_file = "{}/software/main_fw_bootstrap/main_fw_bootstrap.bin".format(builder.output_dir)
-    elif args.target == 'boot':
-        blkram_file = "{}/software/bootloader/bootloader.bin".format(builder.output_dir)
+    blkram_file = "{}/software/bootloader/bootloader.bin".format(builder.output_dir)
     
     blkram_init = "{}/gateware/blkram_fw.init".format(builder.output_dir)
     CreateFirmwareInit(get_mem_data(blkram_file, soc.cpu.endianness), blkram_init)
@@ -417,35 +309,14 @@ def main():
     os.system(f"ecpbram  --input {input_config} --output {output_config} --from {rand_rom} --to {blkram_init}")
 
     # create a compressed bitstream
-    os.system(f"ecppack --freq 38.8 --compress {'--bootaddr 0x{:x}'.format(gateware_offset) if args.target == 'boot' else ''} --input {output_config} --bit {output_bit}")
+    os.system(f"ecppack --freq 38.8 --compress {'--bootaddr 0x{:x}'.format(gateware_offset)} --input {output_config} --bit {output_bit}")
 
-    if args.target == 'main':
-        
-        # Build firmware
-        soc.PackageFirmware(builder)
-
-        # Combine FLASH firmware
-        from util.combine import CombineBinaryFiles
-        flash_regions_final = {
-            "build/gateware/boson_sd_main_bitstream.bit": gateware_offset,   # SoC ECP5 Bitstream
-            "build/software/main_fw/main_fw.bin": firmware_offset,  # main firmware
-        }
-        output_bin = os.path.join(builder.output_dir, "gateware", "boson_sd_main_firmware.bin")
-        CombineBinaryFiles(flash_regions_final, output_bin)
-
-        
-        print(f"""Boson SD build complete!  
-        
-    boson_sd_main_firmware.bin 
-        size={os.path.getsize(output_bin) / 1024 :.2f}KB ({os.path.getsize(output_bin)} bytes) 
-        FLASH Usage: {(float)(os.path.getsize(output_bin)) / (((2*1024*1024) - gateware_offset)/100) :.2f} %
-        """)
-    else:
-        print(f"""Boson SD bootloader build complete!  
-        
-    boson_sd_bootloader_bitstream.bit size={os.path.getsize(output_bit) / 1024 :.2f}KB ({os.path.getsize(output_bit)} bytes) 
-        FLASH Sector Usage: {math.ceil(os.path.getsize(output_bit) / (64*1024)) :} / {1024 // 64}
-        """)
+   
+    print(f"""Boson SD bootloader build complete!  
+    
+boson_sd_bootloader_bitstream.bit size={os.path.getsize(output_bit) / 1024 :.2f}KB ({os.path.getsize(output_bit)} bytes) 
+    FLASH Sector Usage: {math.ceil(os.path.getsize(output_bit) / (64*1024)) :} / {1024 // 64}
+    """)
 
 
 if __name__ == "__main__":

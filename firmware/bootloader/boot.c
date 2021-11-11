@@ -18,7 +18,6 @@
 #include <generated/csr.h>
 #include <generated/soc.h>
 
-#include "sfl.h"
 #include "boot.h"
 
 #include <libbase/uart.h>
@@ -31,10 +30,8 @@
 #include <libliteeth/udp.h>
 #include <libliteeth/tftp.h>
 
-#include <liblitesdcard/spisdcard.h>
-#include <liblitesdcard/sdcard.h>
-#include <liblitesata/sata.h>
-#include <libfatfs/ff.h>
+#include "ff.h"
+#include "sdcard.h"
 
 /*-----------------------------------------------------------------------*/
 /* Helpers                                                               */
@@ -117,228 +114,176 @@ enum {
 };
 
 /*-----------------------------------------------------------------------*/
-/* ROM Boot                                                              */
+/* SDCard Boot                                                           */
 /*-----------------------------------------------------------------------*/
 
-#ifdef ROM_BOOT_ADDRESS
-/* Running the application code from ROM is the fastest way to execute code
-   and could be interesting when the code is small enough, on large devices
-   where many blockrams are available or simply when the execution speed is
-   critical. Defining ROM_BOOT_ADDRESS in the SoC will make the BIOS jump to
-   it at boot. */
-void romboot(void)
+#if defined(CSR_SPISDCARD_BASE) || defined(CSR_SDCORE_BASE)
+
+static int copy_file_from_sdcard_to_ram(const char * filename, unsigned long ram_address)
 {
-	boot(0, 0, 0, ROM_BOOT_ADDRESS);
-}
-#endif
+	FRESULT fr;
+	FATFS fs;
+	FIL file;
+	uint32_t br;
+	uint32_t offset;
+	unsigned long length;
 
-/*-----------------------------------------------------------------------*/
-/* Serial Boot                                                           */
-/*-----------------------------------------------------------------------*/
-
-#ifdef CSR_UART_BASE
-
-#define ACK_TIMEOUT_DELAY CONFIG_CLOCK_FREQUENCY/4
-#define CMD_TIMEOUT_DELAY CONFIG_CLOCK_FREQUENCY/16
-
-static void timer0_load(unsigned int value) {
-	timer0_en_write(0);
-	timer0_reload_write(0);
-#ifndef CONFIG_DISABLE_DELAYS
-	timer0_load_write(value);
-#else
-	timer0_load_write(0);
-#endif
-	timer0_en_write(1);
-	timer0_update_value_write(1);
-}
-
-static int check_ack(void)
-{
-	int recognized;
-	static const char str[SFL_MAGIC_LEN] = SFL_MAGIC_ACK;
-
-	timer0_load(ACK_TIMEOUT_DELAY);
-	recognized = 0;
-	while(timer0_value_read()) {
-		if(uart_read_nonblock()) {
-			char c;
-			c = uart_read();
-			if((c == 'Q') || (c == '\e'))
-				return ACK_CANCELLED;
-			if(c == str[recognized]) {
-				recognized++;
-				if(recognized == SFL_MAGIC_LEN)
-					return ACK_OK;
-			} else {
-				if(c == str[0])
-					recognized = 1;
-				else
-					recognized = 0;
-			}
-		}
-		timer0_update_value_write(1);
-	}
-	return ACK_TIMEOUT;
-}
-
-static uint32_t get_uint32(unsigned char* data)
-{
-	return ((uint32_t) data[0] << 24) |
-			 ((uint32_t) data[1] << 16) |
-			 ((uint32_t) data[2] << 8) |
-			  (uint32_t) data[3];
-}
-
-#define MAX_FAILURES 256
-
-/* Returns 1 if other boot methods should be tried */
-int serialboot(void)
-{
-	struct sfl_frame frame;
-	int failures;
-	static const char str[SFL_MAGIC_LEN+1] = SFL_MAGIC_REQ;
-	const char *c;
-	int ack_status;
-
-	printf("Booting from serial...\n");
-	printf("Press Q or ESC to abort boot completely.\n");
-
-	/* Send the serialboot "magic" request to Host and wait for ACK_OK */
-	c = str;
-	while(*c) {
-		uart_write(*c);
-		c++;
-	}
-	ack_status = check_ack();
-	if(ack_status == ACK_TIMEOUT) {
-		printf("Timeout\n");
-		return 1;
-	}
-	if(ack_status == ACK_CANCELLED) {
-		printf("Cancelled\n");
+	fr = f_mount(&fs, "", 1);
+	if (fr != FR_OK)
+		return 0;
+	fr = f_open(&file, filename, FA_READ);
+	if (fr != FR_OK) {
+		printf("%s file not found.\n", filename);
+		f_mount(0, "", 0);
 		return 0;
 	}
 
-	/* Assume ACK_OK */
-	failures = 0;
-	while(1) {
-		int i;
-		int timeout;
-		int computed_crc;
-		int received_crc;
-
-		/* Get one Frame */
-		i = 0;
-		timeout = 1;
-		while((i == 0) || timer0_value_read()) {
-			if (uart_read_nonblock()) {
-				if (i == 0) {
-						timer0_load(CMD_TIMEOUT_DELAY);
-						frame.payload_length = uart_read();
-				}
-				if (i == 1) frame.crc[0] = uart_read();
-				if (i == 2) frame.crc[1] = uart_read();
-				if (i == 3) frame.cmd    = uart_read();
-				if (i >= 4) {
-					frame.payload[i-4] = uart_read();
-					if (i == (frame.payload_length + 4 - 1)) {
-						timeout = 0;
-						break;
-					}
-				}
-				i++;
-			}
-			timer0_update_value_write(1);
+	length = f_size(&file);
+	printf("Copying %s to 0x%08lx (%ld bytes)...\n", filename, ram_address, length);
+	init_progression_bar(length);
+	offset = 0;
+	for (;;) {
+		fr = f_read(&file, (void*) ram_address + offset,  0x8000, (UINT *)&br);
+		if (fr != FR_OK) {
+			printf("file read error.\n");
+			f_close(&file);
+			f_mount(0, "", 0);
+			return 0;
 		}
-
-		/* Check Timeout */
-		if (timeout) {
-			/* Acknowledge the Timeout and continue with a new frame */
-			uart_write(SFL_ACK_ERROR);
-			continue;
-		}
-
-		/* Check Frame CRC */
-		received_crc = ((int)frame.crc[0] << 8)|(int)frame.crc[1];
-		computed_crc = crc16(&frame.cmd, frame.payload_length+1);
-		if(computed_crc != received_crc) {
-			/* Acknowledge the CRC error */
-			uart_write(SFL_ACK_CRCERROR);
-
-			/* Increment failures and exit when max is reached */
-			failures++;
-			if(failures == MAX_FAILURES) {
-				printf("Too many consecutive errors, aborting");
-				return 1;
-			}
-			continue;
-		}
-
-		/* Execute Frame CMD */
-		switch(frame.cmd) {
-			/* On SFL_CMD_ABORT ... */
-			case SFL_CMD_ABORT:
-				/* Reset failures */
-				failures = 0;
-				/* Acknowledge and exit */
-				uart_write(SFL_ACK_SUCCESS);
-				return 1;
-
-			/* On SFL_CMD_LOAD... */
-			case SFL_CMD_LOAD: {
-				char *load_addr;
-
-				/* Reset failures */
-				failures = 0;
-
-				/* Copy payload */
-				load_addr = (char *)(uintptr_t) get_uint32(&frame.payload[0]);
-				memcpy(load_addr, &frame.payload[4], frame.payload_length);
-
-				if(start_load_addr == 0){
-					start_load_addr = load_addr;
-				}
-				
-				max_load_addr = load_addr + frame.payload_length;
-
-				/* Acknowledge and continue */
-				uart_write(SFL_ACK_SUCCESS);
-				break;
-			}
-			/* On SFL_CMD_ABORT ... */
-			case SFL_CMD_JUMP: {
-				uint32_t jump_addr;
-
-				/* Reset failures */
-				failures = 0;
-
-				/* Acknowledge and jump */
-				uart_write(SFL_ACK_SUCCESS);
-				jump_addr = get_uint32(&frame.payload[0]);
-
-				printf("max_load_addr=%08x\n", max_load_addr);
-
-				boot(0, 0, 0, jump_addr);
-				break;
-			}
-			default:
-				/* Increment failures */
-				failures++;
-
-				/* Acknowledge the UNKNOWN cmd */
-				uart_write(SFL_ACK_UNKNOWN);
-
-				/* Increment failures and exit when max is reached */
-				if(failures == MAX_FAILURES) {
-					printf("Too many consecutive errors, aborting");
-					return 1;
-				}
-
-				break;
-		}
+		if (br == 0)
+			break;
+		offset += br;
+		show_progress(offset);
 	}
+	show_progress(offset);
+	printf("\n");
+
+	f_close(&file);
+	f_mount(0, "", 0);
+
 	return 1;
 }
 
+static void sdcardboot_from_json(const char * filename)
+{
+	FRESULT fr;
+	FATFS fs;
+	FIL file;
+
+	uint8_t i;
+	uint8_t count;
+	uint32_t length;
+	uint32_t result;
+
+	/* FIXME: modify/increase if too limiting */
+	char json_buffer[1024];
+	char json_name[32];
+	char json_value[32];
+
+	unsigned long boot_r1 = 0;
+	unsigned long boot_r2 = 0;
+	unsigned long boot_r3 = 0;
+	unsigned long boot_addr = 0;
+
+	uint8_t image_found = 0;
+	uint8_t boot_addr_found = 0;
+
+	/* Read JSON file */
+	fr = f_mount(&fs, "", 1);
+	if (fr != FR_OK)
+		return;
+	fr = f_open(&file, filename, FA_READ);
+	if (fr != FR_OK) {
+		printf("%s file not found.\n", filename);
+		f_mount(0, "", 0);
+		return;
+	}
+
+	fr = f_read(&file, json_buffer, sizeof(json_buffer), (UINT *) &length);
+
+	/* Close JSON file */
+	f_close(&file);
+	f_mount(0, "", 0);
+
+	/* Parse JSON file */
+	jsmntok_t t[32];
+	jsmn_parser p;
+	jsmn_init(&p);
+	count = jsmn_parse(&p, json_buffer, strlen(json_buffer), t, sizeof(t)/sizeof(*t));
+	for (i=0; i<count-1; i++) {
+		memset(json_name,   0, sizeof(json_name));
+		memset(json_value,  0, sizeof(json_value));
+		/* Elements are JSON strings with 1 children */
+		if ((t[i].type == JSMN_STRING) && (t[i].size == 1)) {
+			/* Get Element's filename */
+			memcpy(json_name, json_buffer + t[i].start, t[i].end - t[i].start);
+			/* Get Element's address */
+			memcpy(json_value, json_buffer + t[i+1].start, t[i+1].end - t[i+1].start);
+			/* Skip bootargs (optional) */
+			if (strncmp(json_name, "bootargs", 8) == 0) {
+				continue;
+			}
+			/* Get boot addr (optional) */
+			else if (strncmp(json_name, "addr", 4) == 0) {
+				boot_addr = strtoul(json_value, NULL, 0);
+				boot_addr_found = 1;
+			}
+			/* Get boot r1 (optional) */
+			else if (strncmp(json_name, "r1", 2) == 0) {
+				memcpy(json_name, json_buffer + t[i].start, t[i].end - t[i].start);
+				boot_r1 = strtoul(json_value, NULL, 0);
+			}
+			/* Get boot r2 (optional) */
+			else if (strncmp(json_name, "r2", 2) == 0) {
+				boot_r2 = strtoul(json_value, NULL, 0);
+			}
+			/* Get boot r3 (optional) */
+			else if (strncmp(json_name, "r3", 2) == 0) {
+				boot_r3 = strtoul(json_value, NULL, 0);
+			/* Copy Image from SDCard to address */
+			} else {
+				result = copy_file_from_sdcard_to_ram(json_name, strtoul(json_value, NULL, 0));
+				if (result == 0)
+					return;
+				image_found = 1;
+				if (boot_addr_found == 0) /* Boot to last Image address if no bootargs.addr specified */
+					boot_addr = strtoul(json_value, NULL, 0);
+			}
+		}
+	}
+
+	/* Boot */
+	if (image_found)
+		boot(boot_r1, boot_r2, boot_r3, boot_addr);
+}
+
+static void sdcardboot_from_bin(const char * filename)
+{
+	uint32_t result;
+	result = copy_file_from_sdcard_to_ram(filename, HYPERRAM_BASE);
+	if (result == 0)
+		return;
+	//boot(0, 0, 0, MAIN_RAM_BASE);
+}
+
+void sdcardboot(void)
+{
+#ifdef CSR_SPISDCARD_BASE
+	printf("Booting from SDCard in SPI-Mode...\n");
+#endif
+#ifdef CSR_SDCORE_BASE
+	printf("Booting from SDCard in SD-Mode...\n");
+#endif
+
+	/* Boot from boot.json */
+	printf("Booting from boot.json...\n");
+	sdcardboot_from_json("boot.json");
+
+	/* Boot from boot.bin */
+	printf("Booting from boot.bin...\n");
+	sdcardboot_from_bin("boot.bin");
+
+	/* Boot failed if we are here... */
+	printf("SDCard boot failed.\n");
+}
 #endif

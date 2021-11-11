@@ -2,7 +2,6 @@
 #include <stdint.h>
 #include <generated/mem.h>
 #include <generated/csr.h>
-#include "spi.h"
 
 #include "time.h"
 
@@ -45,10 +44,6 @@ __attribute__((naked)) int main(int i, char **c)
   /* Set LED to ON */
 	leds_out_write(1);
 
-  /* Switch to bitbang mode and poll SPI-ID then configure for Quad Mode */
-  spiInit();
-  spiSetQE();
-
   irq_setmask(0);
 	irq_setie(1);
 	uart_init();
@@ -64,11 +59,7 @@ __attribute__((naked)) int main(int i, char **c)
 
   printf("\n");
 
-  prbs_memtest(HYPERRAM_BASE, HYPERRAM_SIZE);
-	
-
-
-	//sdboot();
+	sdcardboot();
 
   /* Set LED to OFF */
 	leds_out_write(0);

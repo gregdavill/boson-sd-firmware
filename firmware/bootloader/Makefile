@@ -3,19 +3,21 @@ BUILD_DIR?=../../
 include $(BUILD_DIR)/software/include/generated/variables.mak
 include $(SOC_DIRECTORY)/software/common.mak
 
-CFLAGS += -Os -DCRC16_FAST
+CFLAGS += -Os -I$(BOOTLOADER_DIRECTORY)/../deps/fatfs/source -I$(BOOTLOADER_DIRECTORY)
 
 OBJECTS=main.o \
 		boot-helper.o \
-		spi.o \
 		hyperram.o \
 		time.o \
 		flash.o \
-		boot.o
+		boot.o \
+		ff.o \
+		ffunicode.o \
+		sdcard.o 
 		
 
 vpath %.ld $(BOOTLOADER_DIRECTORY)
-vpath %.c $(BOOTLOADER_DIRECTORY)
+vpath %.c $(BOOTLOADER_DIRECTORY) $(BOOTLOADER_DIRECTORY)/../deps/fatfs/source
 vpath %.S $(BOOTLOADER_DIRECTORY)
 vpath %.a $(PACKAGES:%=../%)
 
