@@ -13,7 +13,8 @@ OBJECTS=main.o \
 		boot.o \
 		ff.o \
 		ffunicode.o \
-		sdcard.o 
+		sdcard.o \
+		logger.o
 		
 
 vpath %.ld $(BOOTLOADER_DIRECTORY)

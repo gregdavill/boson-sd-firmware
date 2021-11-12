@@ -45,8 +45,7 @@ uint32_t max_load_addr = 0;
 
 
 
-static
-void put_rc (FRESULT rc)
+static char* put_rc (FRESULT rc)
 {
 	const char *p;
 	static const char str[] =
@@ -59,15 +58,15 @@ void put_rc (FRESULT rc)
 	for (p = str, i = 0; i != rc && *p; i++) {
 		while(*p++);
 	}
-	printf("rc=%u FR_%s\n", rc, p);
+
+	return p;
 }
 
 #define FATFS_ERR(EXP) \
 do {\
 	FRESULT rc; \
 	if((rc = EXP) != FR_OK){ \
-		printf( "fatfs: ("#EXP ") ", EXP); \
-		put_rc(rc); \
+		log_printf("FatFs: Error: \""#EXP "\": FRESULT=%s", put_rc(rc)); \
 	} \
 } while(0);
 
@@ -128,7 +127,7 @@ void boot(unsigned long r1, unsigned long r2, unsigned long r3, unsigned long ad
 	uint32_t flash_address = addr;
 	
 
-		printf("%08x - %08x\n", addr, len);
+		log_printf("%08x - %08x", addr, len);
 
 
 	/* First block in 64K erase block */	
@@ -153,8 +152,8 @@ void boot(unsigned long r1, unsigned long r2, unsigned long r3, unsigned long ad
 
 	}
 
-	printf("Executing booted program at 0x%08lx\n\n", SPIFLASH_BASE);
-	printf("--============= \e[1mLiftoff!\e[0m ===============--\n");
+	log_printf("Executing booted program at 0x%08lx", SPIFLASH_BASE);
+	log_printf("--============= \e[1mLiftoff!\e[0m ===============--");
 	uart_sync();
 	irq_setmask(0);
 	irq_setie(0);
@@ -195,39 +194,36 @@ static int copy_file_from_sdcard_to_ram(const char * filename, unsigned long ram
 	uint32_t offset;
 	unsigned long length;
 
-	FATFS_ERR(fr = f_mount(&fs, "0:", 1));
+	FATFS_ERR(fr = f_mount(&fs, "", 1));
 	if (fr != FR_OK){
 		return 0;
 	}
 	FATFS_ERR(fr = f_open(&file, filename, FA_READ));
 	if (fr != FR_OK) {
-		printf("%s file not found.\n", filename);
-		FATFS_ERR(f_unmount("0:"));
+		log_printf("Boot: %s file not found", filename);
+		FATFS_ERR(f_unmount(""));
 		return 0;
 	}
 
-	length = f_size(&file);
-	printf("Copying %s to 0x%08lx (%ld bytes)...\n", filename, ram_address, length);
-	init_progression_bar(length);
+	FATFS_ERR(length = f_size(&file));
+	log_printf("Copying %s to 0x%08lx (%ld bytes)", filename, ram_address, length);
 	offset = 0;
 	for (;;) {
-		fr = f_read(&file, (void*) ram_address + offset,  0x8000, (UINT *)&br);
+		FATFS_ERR(fr = f_read(&file, (void*) ram_address + offset,  0x8000, (UINT *)&br));
 		if (fr != FR_OK) {
-			printf("file read error.\n");
-			f_close(&file);
-			f_mount(0, "", 0);
+			log_printf("Boot: File read error");
+			FATFS_ERR(f_close(&file));
+			FATFS_ERR(f_unmount(""));
 			return 0;
 		}
 		if (br == 0)
 			break;
 		offset += br;
-		show_progress(offset);
+		
 	}
-	show_progress(offset);
-	printf("\n");
-
-	f_close(&file);
-	FATFS_ERR(f_unmount("0:"));
+	
+	FATFS_ERR(f_close(&file));
+	FATFS_ERR(f_unmount(""));
 
 	return 1;
 }
@@ -257,13 +253,13 @@ static void sdcardboot_from_json(const char * filename)
 	uint8_t boot_addr_found = 0;
 
 	/* Read JSON file */
-	FATFS_ERR(fr = f_mount(&fs, "0:", 1));
+	FATFS_ERR(fr = f_mount(&fs, "", 1));
 	if (fr != FR_OK)
 		return;
 	FATFS_ERR(fr = f_open(&file, filename, FA_READ));
 	if (fr != FR_OK) {
-		printf("%s file not found.\n", filename);
-		f_unmount("0:");
+		log_printf("Boot: %s file not found", filename);
+		FATFS_ERR(f_unmount(""));
 		return;
 	}
 
@@ -312,7 +308,7 @@ static void sdcardboot_from_json(const char * filename)
 				boot_r3 = strtoul(json_value, NULL, 0);
 			/* Copy Image from SDCard to address */
 			} else {
-				printf("Loading %s @0x%08x\n", json_name, strtoul(json_value, NULL, 0));
+				log_printf("Boot: Loading %s @0x%08x", json_name, strtoul(json_value, NULL, 0));
 				result = copy_file_from_sdcard_to_ram(json_name, strtoul(json_value, NULL, 0));
 				if (result == 0)
 					return;
@@ -323,7 +319,7 @@ static void sdcardboot_from_json(const char * filename)
 		}
 	}
 
-
+	log_printf("SDCard: Go IDLE");
 	sdcard_go_idle();
 	busy_wait(20);
 
@@ -343,20 +339,15 @@ static void sdcardboot_from_bin(const char * filename)
 
 void sdcardboot(void)
 {
-#ifdef CSR_SPISDCARD_BASE
-	printf("Booting from SDCard in SPI-Mode...\n");
-#endif
-#ifdef CSR_SDCORE_BASE
-	printf("Booting from SDCard in SD-Mode...\n");
-#endif
+	log_printf("Boot: Using SDCard in SD-Mode");
 
 	/* Boot from boot.json */
-	printf("Booting from boot.json...\n");
+	log_printf("Boot: Checking boot.json");
 	sdcardboot_from_json("boot.json");
 
 
 	/* Boot failed if we are here... */
-	printf("SDCard boot failed.\n");
+	log_printf("Boot: SDCard boot failed.");
 
 }
 #endif

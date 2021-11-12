@@ -3,8 +3,8 @@
 
 #include <time.h>
 
+void time_isr();
 void time_init(void);
-int elapsed(int *last_event, int period);
-void msleep(int);
+void time_read(uint32_t* s, uint32_t* us);
 
 #endif

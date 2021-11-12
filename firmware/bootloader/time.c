@@ -1,41 +1,36 @@
 #include "time.h"
 #include <generated/csr.h>
 
+#include <irq.h>
+
+static uint32_t system_seconds;
+
+void time_isr(){
+    system_seconds++;
+    timer1_ev_pending_write(1);
+}
+
 void time_init(void)
 {
 	int t;
 
-	timer0_en_write(0);
-	t = 2 * CONFIG_CLOCK_FREQUENCY;
-	timer0_reload_write(t);
-	timer0_load_write(t);
-	timer0_en_write(1);
+	timer1_en_write(0);
+    timer1_ev_pending_write(1);
+	timer1_ev_enable_write(1);
+	irq_setmask(irq_getmask() | (1 << TIMER1_INTERRUPT));
+
+	t = CONFIG_CLOCK_FREQUENCY;
+	timer1_reload_write(t);
+	timer1_load_write(t);
+	timer1_en_write(1);
 }
 
-int elapsed(int *last_event, int period)
+void time_read(uint32_t* s, uint32_t* us)
 {
-	int t, dt;
-
-	timer0_update_value_write(1);
-	t = timer0_reload_read() - timer0_value_read();
-	if(period < 0) {
-		*last_event = t;
-		return 1;
-	}
-	dt = t - *last_event;
-	if(dt < 0)
-		dt += timer0_reload_read();
-	if((dt > period) || (dt < 0)) {
-		*last_event = t;
-		return 1;
-	} else
-		return 0;
-}
-
-void msleep(int ms)
-{
-    int last_event = 0;
-    elapsed(&last_event, -1); /* Get current time */
-
-    while(!elapsed(&last_event, ms * CONFIG_CLOCK_FREQUENCY/1000)){}
+	/* Ensure that we didn't overflow the timer value while reading */
+	do{
+		*s = system_seconds;
+		timer1_update_value_write(1);
+		*us = (CONFIG_CLOCK_FREQUENCY - timer1_value_read()) / (int)(CONFIG_CLOCK_FREQUENCY/1e6);
+	}while(*s != system_seconds);
 }

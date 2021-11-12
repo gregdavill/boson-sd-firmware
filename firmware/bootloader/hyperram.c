@@ -77,7 +77,6 @@ void hyperram_init(void){
 		set_clk_delay(clk_del >> 2);
 		set_io_delay(io_del);
 		int i = 0;
-		printf("%u,%u, %u |", clk_del >> 2, clk_del & 1 ? 1 : 0, clk_del & 2 ? 1 : 0);
 		for(i = 0; i < 64; i++){
 
 			int pass = basic_memtest();
@@ -87,9 +86,6 @@ void hyperram_init(void){
 			crg_phase_dir_write(0);
 			crg_phase_step_write(0);
 			crg_phase_step_write(1);
-
-			if(i & 1)
-				printf("%c", pass > 0 ? '0' : '-');
 
 			if(pass == 1){
 				window++;
@@ -103,7 +99,6 @@ void hyperram_init(void){
 			}
 
 		}
-		printf("| %d    \r", window );
 		if(window >= 5){
 			for(i = 0; i < window/2; i++){
 				// Shift our PLL up
@@ -112,6 +107,10 @@ void hyperram_init(void){
 				crg_phase_step_write(0);
 				crg_phase_step_write(1);
 			}
+
+			log_printf("Hyperram: PLL phase tuned: window=%u", window);
+
+
 			return;
 		}
 		window = 0;
@@ -124,12 +123,9 @@ void hyperram_init(void){
 		crg_slip_hr2x_write(0);
 	}
 
-	printf("\n\n Error: RAM Init failed :(\n Restarting in... ");
-	for(int i = 0; i < 5; i++){
-		msleep(1000);
-		printf("\b%u",5-i);
-	}
-
+	log_printf("Hyperram: Error: RAM Init failed, restarting");
+	busy_wait(100);
+	
 	while(1){
 		reset_out_write(1);
 	}

@@ -604,8 +604,6 @@ DSTATUS disk_initialize(BYTE pdrv)
 	DWORD resp[4];
 	BYTE ty;
 
-	printf("disk_initialize()\n");
-
 	/* Set SD clk freq to Initialization frequency */
 	sdcard_set_clk_freq(SDCARD_CLK_FREQ_INIT, 0);
 	dly_us(1000);
@@ -667,7 +665,7 @@ DSTATUS disk_initialize(BYTE pdrv)
 	CardType = ty;				   /* Save card type */
 	bswap_cp(&CardInfo[32], resp); /* Save OCR */
 
-	sdcard_set_clk_freq((unsigned long)20e6, 1);
+	sdcard_set_clk_freq(SDCARD_CLK_FREQ, 0);
 
 	/*---- Card is 'ready' state ----*/
 
@@ -710,13 +708,9 @@ DSTATUS disk_initialize(BYTE pdrv)
 	if(sdcard_app_set_bus_width() != SD_OK)
 		return 0;
 
-
 	/* Switch speed */
 	if (sdcard_switch(SD_SWITCH_SWITCH, SD_GROUP_ACCESSMODE, SD_SPEED_SDR25) != SD_OK)
 		return 0;
-
-
-	sdcard_set_clk_freq((unsigned long)50e6, 1);
 
 	/* Send SCR */
 	/* FIXME: add scr decoding (optional) */
@@ -735,7 +729,6 @@ DSTATUS disk_initialize(BYTE pdrv)
 	return Stat;
 
 di_fail:
-	printf("Init Fail :(\n");
 	
 	Stat |= STA_NOINIT; /* Set STA_NOINIT */
 	return Stat;

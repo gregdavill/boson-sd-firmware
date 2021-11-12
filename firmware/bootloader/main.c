@@ -5,24 +5,23 @@
 
 #include "time.h"
 
+#include "logger.h"
+
 #include <irq.h>
 #include <uart.h>
 
 /* prototypes */
 void isr(void);
 
-uint32_t system_ticks;
-
 void isr(void){
 	__attribute__((unused)) unsigned int irqs;
 
 	irqs = irq_pending() & irq_getmask();
 
-  // if (irqs & (1 << TIMER0_INTERRUPT))
-  // {
-  //   system_ticks++;
-  //   timer0_ev_pending_write(1);
-  // }
+  if (irqs & (1 << TIMER1_INTERRUPT))
+  {
+    time_isr();
+  }
 
 #ifdef CSR_UART_BASE
 #ifndef UART_POLLING
@@ -39,6 +38,7 @@ void isr(void){
 __attribute__((naked)) int main(int i, char **c)
 {	
 
+  /* Configure I/O for outputing UART */
   io_oe_out_write(0b01);
 
   /* Set LED to ON */
@@ -50,21 +50,35 @@ __attribute__((naked)) int main(int i, char **c)
 
   time_init();
   
-	printf("\n\n\n\e[92;1m    - Boson SD Bootloader - \e[0m\n");
- 	printf("\n (c) Copyright 2021 Greg Davill \n");
- 	printf(" bootloader built: "__DATE__ " " __TIME__ " \n\n");
-
-  /* init HyperRAM */
-  hyperram_init();
-
   printf("\n");
+  log_printf("Info: Boson SD Bootloader");
+	log_printf("Info: (c) Copyright 2021 Greg Davill");
+  log_printf("Info: built: "__DATE__ " " __TIME__ "");
 
-	sdcardboot();
+  if(sdphy_card_detect_read() == 1){
+    log_printf("SDCard: No card detected");
+  }else{
+    /* init HyperRAM */
+    hyperram_init();
+
+    sdcardboot();
+  }
+
 
   /* Set LED to OFF */
 	leds_out_write(0);
 
+  log_printf("Info: Bootloader Done, Restarting");
   uart_sync();
+
+  busy_wait(10);
+	
+
+  while (1)
+  {
+    /* code */
+  }
+  
 
   /* Reboot into user gateware */
   while(1){
