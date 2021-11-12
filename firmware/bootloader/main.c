@@ -61,7 +61,6 @@ __attribute__((naked)) int main(int i, char **c)
 
 	sdcardboot();
 
-
   /* Set LED to OFF */
 	leds_out_write(0);
 

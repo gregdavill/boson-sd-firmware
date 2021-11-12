@@ -516,88 +516,6 @@ void sdcard_read(uint32_t block, uint32_t count, uint8_t* buf)
 
 #endif
 
-#ifdef CSR_SDMEM2BLOCK_BASE
-
-void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
-{
-	while (count) {
-		uint32_t nblocks;
-#ifdef SDCARD_CMD25_SUPPORT
-		nblocks = count;
-#else
-		nblocks = 1;
-#endif
-
-		if(buf < (uint8_t*)HYPERRAM_BASE){
-			/* Initialize DMA Reader */
-			//printf("sdcard_write() cnt=%u, buf=%08x\n", count, buf);
-			sdmem2block_dma_enable_write(0);
-			sdmem2block_dma_base_write((uint64_t)(uintptr_t) buf);
-			sdmem2block_dma_length_write(512*nblocks);
-			sdmem2block_dma_enable_write(1);
-		}else{
-			//printf("sdcard_write() cnt=%u, buf=%08x\n", count, buf);
-			writer_reset_write(1);
-			writer_enable_write(0);
-			writer_burst_size_write(128);
-			writer_transfer_size_write((512/4)*nblocks);
-			writer_start_address_write((uint32_t)buf >> 2);
-			writer_sink_mux_write(1);
-			writer_external_sync_write(0);
-			writer_enable_write(1);
-		}
-
-		/* Write Block(s) to SDCard */
-#ifdef SDCARD_CMD23_SUPPORT
-		sdcard_set_block_count(nblocks);
-#endif
-		if (nblocks > 1)
-			sdcard_write_multiple_block(block, nblocks);
-		else
-			sdcard_write_single_block(block);
-
-
-		/* Wait for DMA Reader to complete */
-		if(buf < (uint8_t*)HYPERRAM_BASE){
-			while ((sdmem2block_dma_done_read() & 0x1) == 0);
-			
-			if(sdmem2block_dma_done_read() != 1){
-				printf("sdmem2block_dma_done_read() = %04x\n", sdmem2block_dma_done_read());
-			}
-		}else{
-			int timeout = 0;
-			while(writer_done_read() == 0){
-				if(timeout++ > 1000){
-					printf("Timeout?!()\n");
-					break;
-				}
-				dly_us(10);
-			}
-
-			/* DMA is "connected" to the sdcore when it's enabled. Keep this delay here to ensure 
-			 * that we stay connected while the fifo still has data in it. 
-			 */
-			dly_us(100);
-			writer_enable_write(0);
-		}
-		
-
-
-		/* Stop transmission (Only for multiple block reads) */
-		if (nblocks > 1){
-			sdcard_stop_transmission();
-		}
-
-		/* Update Block/Buffer/Count */
-		block += nblocks;
-		buf   += 512*nblocks;
-		count -= nblocks;
-	}
-
-	busy_wait(1);
-}
-#endif
-
 
 /*-----------------------------------------------------------------------*/
 /* Send a command token to the card and receive a response               */
@@ -647,7 +565,7 @@ static int wait_ready(		   /* Returns 1 when card is tran state, otherwise retur
 		if (send_cmd(CMD13, (DWORD)CardRCA << 16, 1, rc) && ((rc[0] & 0x01E00) == 0x00800))
 			break;
 
-		dly_us(1000);
+		dly_us(10);
 
 		/* This loop takes a time. Insert rot_rdq() here for multitask envilonment. */
 	}
@@ -692,7 +610,7 @@ DSTATUS disk_initialize(BYTE pdrv)
 	sdcard_set_clk_freq(SDCARD_CLK_FREQ_INIT, 0);
 	dly_us(1000);
 
-	for (timeout=1000; timeout>0; timeout--) {
+	for (timeout=20; timeout>0; timeout--) {
 		/* Set SDCard in SPI Mode (generate 80 dummy clocks) */
 		sdphy_init_initialize_write(1);
 		dly_us(1000);
@@ -700,7 +618,6 @@ DSTATUS disk_initialize(BYTE pdrv)
 		/* Set SDCard in Idle state */
 		if (sdcard_go_idle() == SD_OK)
 			break;
-		dly_us(100);
 	}
 	if (timeout == 0)
 		return 0;
@@ -709,14 +626,14 @@ DSTATUS disk_initialize(BYTE pdrv)
 
 	/*---- Card is 'idle' state ----*/
 
-	int Timer = 1000;				   /* Initialization timeout of 1000 msec */
+	int Timer = 50;				   /* Initialization timeout of 500 msec */
 	if (send_cmd(CMD8, 0x1AA, 1, resp) /* Is the card SDv2? */
 		&& (resp[0] & 0xFFF) == 0x1AA)
 	{ /* The card can work at vdd range of 2.7-3.6V */
 		do
 		{ /* Wait while card is busy state (use ACMD41 with HCS bit) */
 
-			dly_us(1000); /* 1ms */
+			dly_us(10); /* 1ms */
 
 			/* This loop takes a time. Insert task rotation here for multitask envilonment. */
 
@@ -909,7 +826,7 @@ DRESULT disk_ioctl(
 	switch (cmd)
 	{
 	case CTRL_SYNC: /* Make sure that all data has been written on the media */
-		if (wait_ready(500))
+		if (wait_ready(50))
 			res = RES_OK; /* Wait for card enters tarn state */
 		break;
 
@@ -960,7 +877,7 @@ DRESULT disk_ioctl(
 			st *= 512;
 			ed *= 512;
 		}
-		if (send_cmd(CMD32, st, 1, resp) && send_cmd(CMD33, ed, 1, resp) && send_cmd(CMD38, 0, 1, resp) && wait_ready(30000))
+		if (send_cmd(CMD32, st, 1, resp) && send_cmd(CMD33, ed, 1, resp) && send_cmd(CMD38, 0, 1, resp) && wait_ready(3000))
 		{
 			res = RES_OK;
 		}
@@ -995,7 +912,7 @@ DRESULT disk_ioctl(
 		if (CardType & CT_SDC)
 		{ /* SDC */
 			printf("Get Data Block ");
-			if (wait_ready(500))
+			if (wait_ready(50))
 			{
 				printf("Ready?");
 				//SDC_BLOCKSIZE = 63;

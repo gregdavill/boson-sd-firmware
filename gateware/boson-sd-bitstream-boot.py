@@ -29,27 +29,17 @@ from litex.build.generic_platform import *
 from litex.soc.cores.clock import *
 from rtl.ecp5_dynamic_pll import ECP5PLL, period_ns
 from litex.soc.integration.soc_core import *
-from litex.soc.integration.soc import SoC, SoCRegion
 from litex.soc.integration.builder import *
 
-from litex.soc.cores.bitbang import I2CMaster
-from litex.soc.cores.gpio import GPIOOut, GPIOIn
+from litex.soc.cores.gpio import GPIOOut
 from litex.soc.cores import uart
+from litex.soc.interconnect.csr_eventmanager import EventManager, EventSourcePulse, EventSourceLevel
 
-from litex.soc.interconnect import stream, wishbone
-from litex.soc.interconnect.wishbone import Interface, Crossbar
+from litex.soc.interconnect import wishbone
 from litex.soc.interconnect.csr import *
 
 from litex.soc.cores.led import LedChaser
-
-from migen.genlib.misc import timeline
-from migen.genlib.cdc import MultiReg, PulseSynchronizer
-
-from rtl.prbs import PRBSStream
-from rtl.wb_streamer import StreamReader, StreamWriter
 from rtl.streamable_hyperram import StreamableHyperRAM
-
-from rtl.video.DMACapture import BosonCapture
 
 
 class _CRG(Module, AutoCSR):
@@ -236,6 +226,71 @@ class Boson_SoC(SoCCore):
             return r
 
         self.add_constant("GIT_SHA1", get_git_revision())
+    
+    # Add SDCard -----------------------------------------------------------------------------------
+    def add_sdcard(self, name="sdcard", mode="read+write", use_emulator=False, software_debug=False):
+        # Imports.
+        from litesdcard.emulator import SDEmulator
+        from litesdcard.phy import SDPHY
+        from litesdcard.core import SDCore
+        from litesdcard.frontend.dma import SDBlock2MemDMA, SDMem2BlockDMA
+
+        # Checks.
+        assert mode in ["read", "write", "read+write"]
+
+        # Emulator / Pads.
+        if use_emulator:
+            sdemulator = SDEmulator(self.platform)
+            self.submodules += sdemulator
+            sdcard_pads = sdemulator.pads
+        else:
+            sdcard_pads = self.platform.request(name)
+
+        # Core.
+        self.check_if_exists("sdphy")
+        self.check_if_exists("sdcore")
+        self.submodules.sdphy  = SDPHY(sdcard_pads, self.platform.device, self.clk_freq, cmd_timeout=10e-3, data_timeout=10e-3)
+        self.submodules.sdcore = SDCore(self.sdphy)
+
+        # Block2Mem DMA.
+        if "read" in mode:
+            bus = wishbone.Interface(data_width=self.bus.data_width, adr_width=self.bus.address_width)
+            self.submodules.sdblock2mem = SDBlock2MemDMA(bus=bus, endianness=self.cpu.endianness)
+            self.comb += self.sdcore.source.connect(self.sdblock2mem.sink)
+            dma_bus = self.bus if not hasattr(self, "dma_bus") else self.dma_bus
+            dma_bus.add_master("sdblock2mem", master=bus)
+
+        # Mem2Block DMA.
+        if "write" in mode:
+            bus = wishbone.Interface(data_width=self.bus.data_width, adr_width=self.bus.address_width)
+            self.submodules.sdmem2block = SDMem2BlockDMA(bus=bus, endianness=self.cpu.endianness)
+            self.comb += self.sdmem2block.source.connect(self.sdcore.sink)
+            dma_bus = self.bus if not hasattr(self, "dma_bus") else self.dma_bus
+            dma_bus.add_master("sdmem2block", master=bus)
+
+        # Interrupts.
+        self.submodules.sdirq = EventManager()
+        self.sdirq.card_detect   = EventSourcePulse(description="SDCard has been ejected/inserted.")
+        if "read" in mode:
+            self.sdirq.block2mem_dma = EventSourcePulse(description="Block2Mem DMA terminated.")
+        if "write" in mode:
+            self.sdirq.mem2block_dma = EventSourcePulse(description="Mem2Block DMA terminated.")
+        self.sdirq.cmd_done      = EventSourceLevel(description="Command completed.")
+        self.sdirq.finalize()
+        if "read" in mode:
+            self.comb += self.sdirq.block2mem_dma.trigger.eq(self.sdblock2mem.irq)
+        if "write" in mode:
+            self.comb += self.sdirq.mem2block_dma.trigger.eq(self.sdmem2block.irq)
+        self.comb += [
+            self.sdirq.card_detect.trigger.eq(self.sdphy.card_detect_irq),
+            self.sdirq.cmd_done.trigger.eq(self.sdcore.cmd_event.fields.done)
+        ]
+        if self.irq.enabled:
+            self.irq.add("sdirq", use_loc_if_exists=True)
+
+        # Debug.
+        if software_debug:
+            self.add_constant("SDCARD_DEBUG")
 
     def PackageBooter(self, builder):
         self.finalize()

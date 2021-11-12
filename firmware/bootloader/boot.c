@@ -323,6 +323,10 @@ static void sdcardboot_from_json(const char * filename)
 		}
 	}
 
+
+	sdcard_go_idle();
+	busy_wait(20);
+
 	/* Boot */
 	if (image_found)
 		boot(boot_r1, boot_r2, boot_r3, boot_addr);
@@ -354,7 +358,5 @@ void sdcardboot(void)
 	/* Boot failed if we are here... */
 	printf("SDCard boot failed.\n");
 
-	sdcard_go_idle();
-	busy_wait(20);
 }
 #endif
