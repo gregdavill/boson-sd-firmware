@@ -303,10 +303,6 @@ static void sdcardboot_from_json(const char *filename) {
             }
         }
     }
-
-    log_printf("SDCard: Go IDLE");
-    sdcard_go_idle();
-    busy_wait(20);
 }
 
 void sdcardboot(void) {
@@ -319,5 +315,9 @@ void sdcardboot(void) {
     /* Boot from boot.json */
     log_printf("Boot: Checking boot.json");
     sdcardboot_from_json("boot.json");
+
+    log_printf("SDCard: Go IDLE");
+    sdcard_go_idle();
+    busy_wait(20);
 }
 #endif
