@@ -3,7 +3,7 @@ BUILD_DIR?=../../
 include $(BUILD_DIR)/software/include/generated/variables.mak
 include $(SOC_DIRECTORY)/software/common.mak
 
-CFLAGS += -Os -I$(BOOTLOADER_DIRECTORY)/../deps/fatfs/source -I$(BOOTLOADER_DIRECTORY)/include/
+CFLAGS += -Os -I$(BOOTLOADER_DIRECTORY)/../deps/fatfs/source -I$(BOOTLOADER_DIRECTORY)/include
 
 OBJECTS=main.o \
 		boot-helper.o \

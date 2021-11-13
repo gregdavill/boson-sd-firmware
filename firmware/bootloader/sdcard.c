@@ -19,9 +19,6 @@
 
 #include "diskio.h" /* Common include file for FatFs and disk I/O layer */
 
-//#define USE_CACHE
-
-//#define SDCARD_CMD23_SUPPORT /* SET_BLOCK_COUNT */
 #define SDCARD_CMD18_SUPPORT /* READ_MULTIPLE_BLOCK */
 #define SDCARD_CMD25_SUPPORT /* WRITE_MULTIPLE_BLOCK */
 
@@ -598,12 +595,12 @@ DSTATUS disk_initialize(BYTE pdrv) {
 
     /* Set SD clk freq to Initialization frequency */
     sdcard_set_clk_freq(SDCARD_CLK_FREQ_INIT, 0);
-    dly_us(1000);
+    dly_us(5000);
 
-    for (timeout = 20; timeout > 0; timeout--) {
+    for (timeout = 50; timeout > 0; timeout--) {
         /* Set SDCard in SPI Mode (generate 80 dummy clocks) */
         sdphy_init_initialize_write(1);
-        dly_us(1000);
+        dly_us(10000);
 
         /* Set SDCard in Idle state */
         if (sdcard_go_idle() == SD_OK)
@@ -616,12 +613,12 @@ DSTATUS disk_initialize(BYTE pdrv) {
 
     /*---- Card is 'idle' state ----*/
 
-    int Timer = 50;                      /* Initialization timeout of 500 msec */
+    int Timer = 1000;                    /* Initialization timeout of 1000 msec */
     if (send_cmd(CMD8, 0x1AA, 1, resp)   /* Is the card SDv2? */
         && (resp[0] & 0xFFF) == 0x1AA) { /* The card can work at vdd range of 2.7-3.6V */
         do {                             /* Wait while card is busy state (use ACMD41 with HCS bit) */
 
-            dly_us(10); /* 1ms */
+            dly_us(1000); /* 1ms */
 
             /* This loop takes a time. Insert task rotation here for multitask envilonment. */
 
@@ -717,41 +714,13 @@ di_fail:
 /*-----------------------------------------------------------------------*/
 
 DRESULT disk_read(BYTE drv, BYTE *buff, LBA_t sector, UINT count) {
-#ifdef USE_CACHE
-    if (count == 1) {
-        if (sd_cache_read(buff, sector, 1)) {
-            /* Found a block in our cache */
-            /* The call already performs a copy into our buffer */
-            return RES_OK;
-        }
-    }
-#endif
-    sdcard_read(sector, count, buff);
-
-#ifdef USE_CACHE
-    /* We have read a block, add it to the cache */
-    if (count == 1) {
-        if (sd_cache_create(buff, sector, 1)) {
-            /* Return true either way */
-        }
-    }
-#endif
-
+	sdcard_read(sector, count, buff);
     return RES_OK;
 }
 
 DRESULT disk_write(BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count) {
     //printf("disk_write() sector=%08x,buff=%08x,cnt=%u\n", sector, buff, count);
     sdcard_write(sector, count, (BYTE*)buff);
-
-#ifdef USE_CACHE
-    /* We have written a block, if this block exists in cache then update */
-    if (count == 1) {
-        if (sd_cache_update(buff, sector, 1)) {
-            /* Return true either way */
-        }
-    }
-#endif
 
     return RES_OK;
 }

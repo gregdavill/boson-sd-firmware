@@ -57,6 +57,8 @@ __attribute__((naked)) int main(int i, char **c) {
         /* init HyperRAM */
         hyperram_init();
 
+        busy_wait(500);
+
         /* Run bootloader logic */
         sdcardboot();
     }
