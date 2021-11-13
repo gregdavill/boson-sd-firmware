@@ -514,4 +514,6 @@ enum _functionCodes {
 };
 typedef enum _functionCodes FLR_FUNCTION;
 
+const char* FLR_FUNCTION_c_str(FLR_FUNCTION f);
+
 #endif // FUNCTION_CODES_H

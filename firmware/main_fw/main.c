@@ -76,6 +76,7 @@ static const char* put_rc(FRESULT rc) {
         FRESULT rc;                                                                                                     \
         if ((rc = EXP) != FR_OK) {                                                                                      \
             log_printf("FatFs: Error: \"" #EXP "\": FRESULT=%s", put_rc(rc)); \
+			while(1); \
         }                                                                                                               \
     } while (0);
 
@@ -208,20 +209,18 @@ int main(int i, char** c) {
 			FATFS_ERR(fr);
 		}
 
-		FATFS_ERR(fr = f_chdir("DCIM"));
 
-        FATFS_ERR(fr = scan_folders("", &dir_cnt));
+        FATFS_ERR(fr = scan_folders("DCIM", &dir_cnt));
         dir_cnt += 1;
-        log_printf("dir_cnt = %lu", dir_cnt);
+        log_printf("dir_cnt = %u", dir_cnt);
 
-        sprintf(path, "BSN%04u", dir_cnt);
+        sprintf(path, "DCIM/BSN%04u", dir_cnt);
         FATFS_ERR(fr = f_mkdir(path));
-		FATFS_ERR(fr = f_chdir(path));
-
+		
 
         for (unsigned int i = 0; i < 500; i++) {
-            char name[64];
-            sprintf(name, "IMG_%04u.RAW", i);
+            char name[64] = {0};
+            sprintf(name, "%s/IMG_%04u.RAW", path, i);
 
             log_printf("%s", name);
 
@@ -240,6 +239,8 @@ int main(int i, char** c) {
             ptr = (void*)HYPERRAM_BASE;
 
             if (fr == FR_OK) {
+
+                FATFS_ERR(fr = f_truncate(&Fil));
                 /* Handle all the FAT changes upfront */
                 FATFS_ERR(fr = f_expand(&Fil, filesize, 1));
 
@@ -247,7 +248,7 @@ int main(int i, char** c) {
                     /* Basic File writing, will typically write 64 sectors at a time, */
                     FATFS_ERR(fr = f_write(&Fil, ptr, filesize, &bw));
                     if (bw != filesize) {
-                        log_printf("Cap: Error: file=%s, (bw=%lu)!=(filesize=%lu)\n", name, bw, filesize);
+                        log_printf("Cap: Error: file=%s, (bw=%u)!=(filesize=%lu)\n", name, bw, filesize);
                         continue;
                     }
 
@@ -261,12 +262,16 @@ int main(int i, char** c) {
 
                     /* Write sequential sectors from top of the file at a time */
                     /* I don't think this function ever returns an error */
-                    FATFS_ERR(disk_write(drv, ptr, lba, filesize / 512));
+                    disk_write(drv, ptr, lba, filesize / 512);
+					
                 }
 
                 FATFS_ERR(fr = f_close(&Fil));
             }
-            busy_wait(330);
+			
+			/* SYNC */
+			disk_ioctl(0, 0, 0);
+            busy_wait(100);
         }
     }
 

@@ -139,7 +139,7 @@
 /  the file names to read. The maximum possible length of the read file name depends
 /  on character encoding. When LFN is not enabled, these options have no effect. */
 
-#define FF_FS_RPATH 1
+#define FF_FS_RPATH 0
 /* This option configures support for relative path.
 /
 /   0: Disable relative path and remove related functions.
@@ -184,7 +184,7 @@
 /  for variable sector size mode and disk_ioctl() function needs to implement
 /  GET_SECTOR_SIZE command. */
 
-#define FF_LBA64 1
+#define FF_LBA64 0
 /* This option switches support for 64-bit LBA. (0:Disable or 1:Enable)
 /  To enable the 64-bit LBA, also exFAT needs to be enabled. (FF_FS_EXFAT == 1) */
 

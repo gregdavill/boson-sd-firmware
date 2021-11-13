@@ -129,8 +129,8 @@ FLR_RESULT dispatcher_rx(uint8_t *recvData, uint32_t *recvBytes) {
     int timeout = 250;
     int timeout_count = 0;
 
-    char str[256];
-    char* str_p = str;
+    // char str[256];
+    // char* str_p = str;
 
     FLR_RESULT errorCode = R_UART_RECEIVE_TIMEOUT;
 
@@ -139,7 +139,7 @@ FLR_RESULT dispatcher_rx(uint8_t *recvData, uint32_t *recvBytes) {
 
     uint32_t len = 0;
 
-    str_p += snprintf(str_p, sizeof(str) - (str_p - str),"bsn << ");
+    //str_p += snprintf(str_p, sizeof(str) - (str_p - str),"bsn << ");
     while ((++timeout_count < timeout) && (errorCode != R_SUCCESS)) {
         while (boson_uart_read_nonblock()) {
             recvData[len] = boson_uart_read();
@@ -150,7 +150,7 @@ FLR_RESULT dispatcher_rx(uint8_t *recvData, uint32_t *recvBytes) {
                     continue;
             }
 
-            str_p += snprintf(str_p, sizeof(str) - (str_p - str),"%02x ", recvData[len]);
+            //str_p += snprintf(str_p, sizeof(str) - (str_p - str),"%02x ", recvData[len]);
 
             if (len > 2) {
                 if (recvData[len] == END_FRAME_BYTE) {
@@ -175,8 +175,8 @@ FLR_RESULT dispatcher_rx(uint8_t *recvData, uint32_t *recvBytes) {
         busy_wait(1);
     }
 
-    str_p += snprintf(str_p, sizeof(str) - (str_p - str),"(%u ms)", timeout_count);
-    log_printf("Boson: Dispatcher: %s", str);
+    //str_p += snprintf(str_p, sizeof(str) - (str_p - str),"(%u ms)", timeout_count);
+    //log_printf("Boson: Dispatcher: %s", str);
 
     return errorCode;
 }
@@ -186,6 +186,8 @@ FLR_RESULT dispatcher(FLR_FUNCTION fnID, const uint8_t *sendData, const uint32_t
     uint8_t recvData[64];
     uint32_t recvBytes = (sizeof(recvData) / sizeof(uint8_t));
     uint32_t seq = _seq++;
+
+    log_printf("Boson: dispatcher: fnID=%s", FLR_FUNCTION_c_str(fnID));
 
     r = dispatcher_tx(seq, fnID, sendData, sendBytes);
     if (r != R_SUCCESS) {
@@ -221,7 +223,7 @@ FLR_RESULT dispatcher(FLR_FUNCTION fnID, const uint8_t *sendData, const uint32_t
             return R_SUCCESS;
         }
 
-        log_printf("Boson: Dispatcher: FnID=%u ret=%u\n", fnID, r);
+        log_printf("Boson: Dispatcher: %s ret=%s (%u)", FLR_FUNCTION_c_str(fnID), FLR_RESULT_R_c_str(r), r);
     }
 
     return r;
@@ -259,6 +261,7 @@ void boson_init(void) {
         //dispatcher(COLORLUT_SETID, (const uint8_t[]){UINT32_LE(_settings.pallete)}, 4); /* Colour LUT: Ironbow */
         busy_wait(10);
         dispatcher(COLORLUT_SETCONTROL, (const uint8_t[]){UINT32_LE(FLR_DISABLE)}, 4);
+        busy_wait(10);
         dispatcher(GAO_SETAVERAGERSTATE, (const uint8_t[]){UINT32_LE(FLR_ENABLE)}, 4);
 
         busy_wait(500);

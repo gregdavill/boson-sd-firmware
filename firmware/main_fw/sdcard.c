@@ -32,7 +32,7 @@
 #endif
 
 #ifndef SDCARD_CLK_FREQ
-#define SDCARD_CLK_FREQ 30000000UL
+#define SDCARD_CLK_FREQ 35000000UL
 #endif
 
 /* MMC card type flags (MMC_GET_TYPE) */
@@ -101,16 +101,16 @@ int sdcard_wait_cmd_done(void) {
 #ifdef SDCARD_DEBUG
 	uint32_t r[SD_CMD_RESPONSE_SIZE/4];
 #endif
+	printf("cmdevt_wait ");
 	for (;;) {
 		event = sdcore_cmd_event_read();
 #ifdef SDCARD_DEBUG
-		//printf("cmdevt: %08x\n", event);
 #endif
 		busy_wait_us(20);
 		if (event & 0x1)
 			break;
 	}
-	
+
 	/* Load bearing delay. 
 	 * When SDCARD_DEBUG is undefined 
 	 * this delay is required for correct operation */
@@ -130,14 +130,14 @@ int sdcard_wait_cmd_done(void) {
 
 int sdcard_wait_data_done(void) {
 	unsigned int event;
+	printf("dataevt: %08x, status=%08lx\n", event, sdphy_dataw_status_read());
 	for (;;) {
 		event = sdcore_data_event_read();
 #ifdef SDCARD_DEBUG
-		//printf("dataevt: %08x\n", event);
 #endif
 		if (event & 0x1)
 			break;
-		busy_wait_us(20);
+		busy_wait_us(10);
 	}
 
 	busy_wait_us(50);
@@ -457,9 +457,6 @@ void sdcard_decode_csd(void) {
 
 void sdcard_read(uint32_t block, uint32_t count, uint8_t* buf)
 {
-#ifdef SDCARD_DEBUG
-	printf("sdcard_read(), block=%08x, count=%08x, buff=%08x\n", block, count, buf);
-#endif
 	while (count) {
 		uint32_t nblocks;
 #ifdef SDCARD_CMD18_SUPPORT
@@ -484,6 +481,7 @@ void sdcard_read(uint32_t block, uint32_t count, uint8_t* buf)
 
 		/* Wait for DMA Writer to complete */
 		while ((sdblock2mem_dma_done_read() & 0x1) == 0);
+	    sdblock2mem_dma_enable_write(0);
 
 		/* Stop transmission (Only for multiple block reads) */
 		if (nblocks > 1)
@@ -494,7 +492,7 @@ void sdcard_read(uint32_t block, uint32_t count, uint8_t* buf)
 
 	flush_cpu_dcache();
 	flush_l2_cache();
-	dump_bytes(buf, 512, buf);
+	//dump_bytes(buf, 512, buf);
 #endif
 		/* Update Block/Buffer/Count */
 		block += nblocks;
@@ -502,6 +500,7 @@ void sdcard_read(uint32_t block, uint32_t count, uint8_t* buf)
 		count -= nblocks;
 	}
 	
+
 	/* Flush caches */
 	flush_cpu_dcache();
 	flush_l2_cache();
@@ -530,7 +529,8 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 			sdmem2block_dma_length_write(512*nblocks);
 			sdmem2block_dma_enable_write(1);
 		}else{
-			//printf("sdcard_write() cnt=%u, buf=%08x\n", count, buf);
+			log_printf("sdcard_write() cnt=%lu, buf=%08lx", count, (uint32_t)buf);
+			//dly_us(1000);
 			writer_reset_write(1);
 			writer_enable_write(0);
 			writer_burst_size_write(128);
@@ -558,20 +558,18 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 			if(sdmem2block_dma_done_read() != 1){
 				printf("sdmem2block_dma_done_read() = %04lx\n", sdmem2block_dma_done_read());
 			}
+
+	        sdmem2block_dma_enable_write(0);
 		}else{
-			int timeout = 0;
 			while(writer_done_read() == 0){
-				if(timeout++ > 1000){
-					printf("Timeout?!()\n");
-					break;
-				}
+				printf(".");
 				dly_us(10);
 			}
 
 			/* DMA is "connected" to the sdcore when it's enabled. Keep this delay here to ensure 
 			 * that we stay connected while the fifo still has data in it. 
 			 */
-			dly_us(100);
+			dly_us(500);
 			writer_enable_write(0);
 		}
 		
@@ -579,6 +577,7 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 
 		/* Stop transmission (Only for multiple block reads) */
 		if (nblocks > 1){
+	        dly_us(1000);
 			sdcard_stop_transmission();
 		}
 
@@ -588,7 +587,6 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 		count -= nblocks;
 	}
 
-	sdmem2block_dma_enable_write(1);
 }
 #endif
 
@@ -749,7 +747,7 @@ DSTATUS disk_initialize(BYTE pdrv)
 	CardType = ty;				   /* Save card type */
 	bswap_cp(&CardInfo[32], resp); /* Save OCR */
 	
-	sdcard_set_clk_freq(SDCARD_CLK_FREQ, 0);
+	sdcard_set_clk_freq(SDCARD_CLK_FREQ / 2, 0);
 
 	/*---- Card is 'ready' state ----*/
 
@@ -831,6 +829,10 @@ di_fail:
 
 DRESULT disk_read(BYTE drv, BYTE *buff, LBA_t sector, UINT count) {
 
+#ifdef SDCARD_DEBUG
+	printf("sdcard_read(), block=%08lx, count=%u, buff=%08lx\n", sector, count, (uint32_t)buff);
+#endif
+
 #ifdef USE_CACHE
 	if(count == 1){
 		if(sd_cache_read(buff, sector, 1))
@@ -860,7 +862,7 @@ DRESULT disk_read(BYTE drv, BYTE *buff, LBA_t sector, UINT count) {
 DRESULT disk_write (BYTE pdrv, const BYTE* buff, LBA_t sector, UINT count){
 
 #ifdef SDCARD_DEBUG
-	printf("disk_write() sector=%08x,buff=%08x,cnt=%u\n", sector, buff, count);
+	printf("disk_write() sector=%08lx,buff=%08lx,cnt=%u\n", sector, (uint32_t)buff, count);
 #endif
     sdcard_write(sector, count, (BYTE*)buff);
 	
