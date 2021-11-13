@@ -3,15 +3,10 @@ BUILD_DIR?=../../
 include $(BUILD_DIR)/software/include/generated/variables.mak
 include $(SOC_DIRECTORY)/software/common.mak
 
-CFLAGS += -Os -DCRC16_FAST
+CFLAGS += -Os -DCRC16_FAST -I$(MAIN_FW_BOOTSTRAP_DIRECTORY)/include
 
 OBJECTS=main.o \
-		boot-helper.o \
-		spi.o \
-		hyperram.o \
-		time.o \
-		flash.o \
-		boot.o
+		hyperram.o 
 		
 
 vpath %.ld $(MAIN_FW_BOOTSTRAP_DIRECTORY)
