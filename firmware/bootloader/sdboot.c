@@ -24,11 +24,13 @@
 #include <system.h>
 
 #include "ff.h"
-#include "sdcard.h"
 #include "flash.h"
 #include "logger.h"
+#include "sdcard.h"
 
-#define MAGIC 0xb5d930e9
+/* Quick initial check to make sure binaries are actually for us */
+#define MAGIC_MAIN 0xb5d930e9
+#define MAGIC_BOOT 0x5d9ce906
 
 /*-----------------------------------------------------------------------*/
 /* Helpers                                                               */
@@ -64,7 +66,6 @@ static const char *put_rc(FRESULT rc) {
             log_printf("FatFs: Error: \"" #EXP "\": FRESULT=%s", put_rc(rc)); \
         }                                                                     \
     } while (0);
-
 
 #define NUMBER_OF_BYTES_ON_A_LINE 16
 void dump_bytes(unsigned int *ptr, int count, unsigned long addr) {
@@ -109,7 +110,7 @@ void dump_bytes(unsigned int *ptr, int count, unsigned long addr) {
 void copy_file_from_ram_to_flash(uint32_t src_addr, uint32_t dst_addr, uint32_t dst_len) {
     log_printf("Boot: Copying 0x%08lx to flash_addr=0x%08lx (%ld bytes)", src_addr, dst_addr, dst_len);
 
-	spiflash_set_high_perf_mode();
+    spiflash_set_high_perf_mode();
 
     uint8_t *data = (uint8_t *)src_addr;
 
@@ -153,16 +154,16 @@ enum {
 
 #if defined(CSR_SPISDCARD_BASE) || defined(CSR_SDCORE_BASE)
 
-static uint32_t copy_file_from_sdcard_to_ram(const char *filename, unsigned long ram_address) {
+static uint32_t copy_file_from_sdcard_to_ram(const char *filename, unsigned long ram_address, uint32_t magic_check) {
     FRESULT fr;
     FATFS fs;
     FIL file;
     uint32_t br;
     uint32_t offset;
     unsigned long length;
-	uint32_t crc_supplied;
-	uint32_t crc_check;
-	uint32_t magic_supplied;
+    uint32_t crc_supplied;
+    uint32_t crc_check;
+    uint32_t magic_supplied;
 
     FATFS_ERR(fr = f_mount(&fs, "", 1));
     if (fr != FR_OK) {
@@ -194,52 +195,49 @@ static uint32_t copy_file_from_sdcard_to_ram(const char *filename, unsigned long
     FATFS_ERR(f_close(&file));
     FATFS_ERR(f_unmount(""));
 
-	memcpy((void*)&crc_supplied, (void*)ram_address+4, 4);
-	memcpy((void*)&magic_supplied, (void*)ram_address, 4);
+    memcpy((void *)&crc_supplied, (void *)ram_address + 4, 4);
+    memcpy((void *)&magic_supplied, (void *)ram_address, 4);
 
-	log_printf("Boot: Check %s: len=%lu bytes, crc=%08lx", filename, length, crc_supplied);
-    
-	/* magic check */
-	if(magic_supplied == MAGIC) {
-		log_printf("Boot: Magic word passed, image is likely for us");
-	} else {
-		log_printf("Boot: Error: Magic word failed, image not likely for us. magic_file=0x%08lx, magic=0x%08lx", magic_supplied, MAGIC);
-		return 0;
-	}
+    log_printf("Boot: Check %s: len=%lu bytes, crc=%08lx", filename, length, crc_supplied);
 
-	/* CRC32 check */
-	crc_check = crc32((void*)(ram_address+8), length-8);
-	if(crc_check == crc_supplied) {
-		log_printf("Boot: crc passed");
-	} else {
-		log_printf("Boot: crc fail, crc_supplied=0x%08lx, crc_check=0x%08lx", crc_supplied, crc_check);
-		return 0;
-	}
+    /* magic check */
+    if (magic_supplied == magic_check) {
+        log_printf("Boot: Magic word passed, image is likely for us");
+    } else {
+        log_printf("Boot: Error: Magic word failed, image not likely for us. magic_file=0x%08lx, magic=0x%08lx", magic_supplied, magic_check);
+        return 0;
+    }
+
+    /* CRC32 check */
+    crc_check = crc32((void *)(ram_address + 8), length - 8);
+    if (crc_check == crc_supplied) {
+        log_printf("Boot: crc passed");
+    } else {
+        log_printf("Boot: crc fail, crc_supplied=0x%08lx, crc_check=0x%08lx", crc_supplied, crc_check);
+        return 0;
+    }
 
     return length;
 }
 
-
 static void sdcardboot_from_bin(const char *filename) {
-    
-	/* Copy Image from SDCard to address */
-	uint32_t addr = 0x80000;
-	log_printf("Boot: Loading %s @0x%08x", filename, addr);
-	uint32_t length = copy_file_from_sdcard_to_ram(filename, HYPERRAM_BASE);
-	if (length == 0)
-		return;
+    /* Copy Image from SDCard to address */
+    uint32_t addr = 0x80000;
+    log_printf("Boot: Loading %s @0x%08x", filename, addr);
+    uint32_t length = copy_file_from_sdcard_to_ram(filename, HYPERRAM_BASE, MAGIC_MAIN);
+    if (length == 0)
+        return;
 
-	/* Check if firmware matches FLASH? */
-	if(memcmp((void*)HYPERRAM_BASE, (void*)SPIFLASH_BASE+addr, length) == 0){
-		log_printf("Boot: %s already matches FLASH", filename);
-		return;
-	}
+    /* Check if firmware matches FLASH? */
+    if (memcmp((void *)HYPERRAM_BASE, (void *)SPIFLASH_BASE + addr, length) == 0) {
+        log_printf("Boot: %s already matches FLASH", filename);
+        return;
+    }
 
-	copy_file_from_ram_to_flash(HYPERRAM_BASE, addr, length);
-	if (length == 0)
-		return;
+    copy_file_from_ram_to_flash(HYPERRAM_BASE, addr, length);
+    if (length == 0)
+        return;
 }
-
 
 static void sdcardboot_from_json(const char *filename) {
     FRESULT fr;
@@ -287,22 +285,30 @@ static void sdcardboot_from_json(const char *filename) {
             /* Get Element's address */
             memcpy(json_value, json_buffer + t[i + 1].start, t[i + 1].end - t[i + 1].start);
 
-            /* Copy Image from SDCard to address */
-            uint32_t addr = strtoul(json_value, NULL, 0);
-            log_printf("Boot: Loading %s @0x%08x", json_name, addr);
-            uint32_t length = copy_file_from_sdcard_to_ram(json_name, HYPERRAM_BASE);
-            if (length == 0)
-                return;
+            /* Unlock bootloader sectors */
+            if (strncmp(json_name, "bootloader_protection", 21) == 0) {
+                if (strncmp(json_value, "disable", 7) == 0) {
+                    spiflash_protection_clear();
+					log_printf("Boot: Warning: Bootloader sectors unprotected");
+                }
+            } else {
+                /* Copy Image from SDCard to address */
+                uint32_t addr = strtoul(json_value, NULL, 0);
+                log_printf("Boot: Loading %s @0x%08x", json_name, addr);
+                uint32_t length = copy_file_from_sdcard_to_ram(json_name, HYPERRAM_BASE, (addr == 0) ? MAGIC_BOOT : MAGIC_MAIN);
+                if (length == 0)
+                    return;
 
-			/* Check if firmware matches FLASH? */
-			if(memcmp((void*)HYPERRAM_BASE, (void*)SPIFLASH_BASE+addr, length) == 0){
-				log_printf("Boot: %s already matches FLASH", json_name);
-				continue;
-			}
+                /* Check if firmware matches FLASH? */
+                if (memcmp((void *)HYPERRAM_BASE, (void *)SPIFLASH_BASE + addr, length) == 0) {
+                    log_printf("Boot: %s already matches FLASH", json_name);
+                    continue;
+                }
 
-            copy_file_from_ram_to_flash(HYPERRAM_BASE, addr, length);
-            if (length == 0)
-                return;
+                copy_file_from_ram_to_flash(HYPERRAM_BASE, addr, length);
+                if (length == 0)
+                    return;
+            }
         }
     }
 
@@ -321,6 +327,5 @@ void sdcardboot(void) {
     /* Boot from boot.json */
     log_printf("Boot: Checking boot.json");
     sdcardboot_from_json("boot.json");
-
 }
 #endif
