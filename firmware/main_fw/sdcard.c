@@ -175,11 +175,10 @@ void sdcard_set_clk_freq(unsigned long clk_freq, int show) {
 	if (show) {
 		/* this is the *effective* new clk_freq */
 		clk_freq = CONFIG_CLOCK_FREQUENCY/divider;
-		printf("Setting SDCard clk freq to ");
 		if (clk_freq > 1000000)
-			printf("%ld MHz\n", clk_freq/1000000);
+			log_printf("Setting SDCard clk freq to %ld MHz", clk_freq/1000000);
 		else
-			printf("%ld KHz\n", clk_freq/1000);
+			log_printf("Setting SDCard clk freq to %ld KHz", clk_freq/1000);
 	}
 	sdphy_clocker_divider_write(divider);
 }
@@ -747,8 +746,8 @@ DSTATUS disk_initialize(BYTE pdrv)
 
 	CardType = ty;				   /* Save card type */
 	bswap_cp(&CardInfo[32], resp); /* Save OCR */
-
-	sdcard_set_clk_freq((unsigned long)20e6, 1);
+	
+	sdcard_set_clk_freq(SDCARD_CLK_FREQ, 0);
 
 	/*---- Card is 'ready' state ----*/
 
@@ -797,7 +796,7 @@ DSTATUS disk_initialize(BYTE pdrv)
 		return 0;
 
 
-	sdcard_set_clk_freq((unsigned long)50e6, 1);
+	sdcard_set_clk_freq(SDCARD_CLK_FREQ, 0);
 
 	/* Send SCR */
 	/* FIXME: add scr decoding (optional) */
