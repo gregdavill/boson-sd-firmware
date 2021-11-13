@@ -265,7 +265,7 @@ class Boson_SoC(SoCCore):
         # Core.
         self.check_if_exists("sdphy")
         self.check_if_exists("sdcore")
-        self.submodules.sdphy  = SDPHY(sdcard_pads, self.platform.device, self.clk_freq, cmd_timeout=10e-3, data_timeout=10e-3)
+        self.submodules.sdphy  = SDPHY(sdcard_pads, self.platform.device, self.clk_freq, cmd_timeout=10e-3, data_timeout=100e-3)
         self.submodules.sdcore = SDCore(self.sdphy)
 
         # Block2Mem DMA.
