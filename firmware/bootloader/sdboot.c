@@ -269,6 +269,13 @@ static void sdcardboot_from_json(const char *filename) {
             uint32_t length = copy_file_from_sdcard_to_ram(json_name, HYPERRAM_BASE);
             if (length == 0)
                 return;
+
+			/* Check if firmware matches FLASH? */
+			if(memcmp((void*)HYPERRAM_BASE, (void*)SPIFLASH_BASE+addr, length) == 0){
+				log_printf("Boot: %s already matches FLASH", json_name);
+				continue;
+			}
+
             copy_file_from_ram_to_flash(HYPERRAM_BASE, addr, length);
             if (length == 0)
                 return;
@@ -286,8 +293,5 @@ void sdcardboot(void) {
     /* Boot from boot.json */
     log_printf("Boot: Checking boot.json");
     sdcardboot_from_json("boot.json");
-
-    /* Boot failed if we are here... */
-    log_printf("Boot: SDCard boot failed.");
 }
 #endif
