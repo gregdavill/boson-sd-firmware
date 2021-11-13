@@ -217,6 +217,28 @@ static uint32_t copy_file_from_sdcard_to_ram(const char *filename, unsigned long
     return length;
 }
 
+
+static void sdcardboot_from_bin(const char *filename) {
+    
+	/* Copy Image from SDCard to address */
+	uint32_t addr = 0x80000;
+	log_printf("Boot: Loading %s @0x%08x", filename, addr);
+	uint32_t length = copy_file_from_sdcard_to_ram(filename, HYPERRAM_BASE);
+	if (length == 0)
+		return;
+
+	/* Check if firmware matches FLASH? */
+	if(memcmp((void*)HYPERRAM_BASE, (void*)SPIFLASH_BASE+addr, length) == 0){
+		log_printf("Boot: %s already matches FLASH", filename);
+		return;
+	}
+
+	copy_file_from_ram_to_flash(HYPERRAM_BASE, addr, length);
+	if (length == 0)
+		return;
+}
+
+
 static void sdcardboot_from_json(const char *filename) {
     FRESULT fr;
     FATFS fs;
@@ -290,8 +312,13 @@ static void sdcardboot_from_json(const char *filename) {
 void sdcardboot(void) {
     log_printf("Boot: Using SDCard in SD-Mode");
 
+    /* Boot from boson_sd_main.bin */
+    log_printf("Boot: Checking boson_sd_main.bin");
+    sdcardboot_from_bin("boson_sd_main.bin");
+
     /* Boot from boot.json */
     log_printf("Boot: Checking boot.json");
     sdcardboot_from_json("boot.json");
+	
 }
 #endif
