@@ -4,7 +4,8 @@ include $(SOC_DIRECTORY)/software/common.mak
 CFLAGS += -O2 -I$(MAIN_FW_DIRECTORY)/include -I$(MAIN_FW_DIRECTORY)/../deps/fatfs/source -fdata-sections -ffunction-sections
 
 OBJECTS=main.o \
-		time.o 	\
+		timer.o \
+		logger.o \
 		ff.o \
 		ffunicode.o \
 		sdcard.o \
@@ -12,8 +13,7 @@ OBJECTS=main.o \
 		rb_tree.o \
 		boson.o \
 		flirCRC.o \
-		Serializer_BuiltIn.o \
-		hyperram.o
+		Serializer_BuiltIn.o 
 
 vpath % $(MAIN_FW_DIRECTORY) $(MAIN_FW_DIRECTORY)/boson $(MAIN_FW_DIRECTORY)/../deps/fatfs/source
 

@@ -19,6 +19,7 @@
 #include "ff.h"
 #include "diskio.h" /* Common include file for FatFs and disk I/O layer */
 #include "sdcard.h"
+#include "logger.h"
 
 //#define USE_CACHE
 
@@ -555,7 +556,7 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 			while ((sdmem2block_dma_done_read() & 0x1) == 0);
 			
 			if(sdmem2block_dma_done_read() != 1){
-				printf("sdmem2block_dma_done_read() = %04x\n", sdmem2block_dma_done_read());
+				printf("sdmem2block_dma_done_read() = %04lx\n", sdmem2block_dma_done_read());
 			}
 		}else{
 			int timeout = 0;
@@ -587,7 +588,7 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 		count -= nblocks;
 	}
 
-	busy_wait(1);
+	sdmem2block_dma_enable_write(1);
 }
 #endif
 
@@ -612,6 +613,9 @@ static int send_cmd(			/* Returns 1 when function succeeded otherwise returns 0 
 	idx &= 0x3F; /* Mask out ACMD flag */
 	
 	int ret = sdcard_send_command(arg, idx, rt);
+	if(ret != SD_OK)
+		return 0;
+		
     uint32_t r[SD_CMD_RESPONSE_SIZE/4];
     csr_rd_buf_uint32(CSR_SDCORE_CMD_RESPONSE_ADDR,
 			  r, SD_CMD_RESPONSE_SIZE/4);
@@ -857,9 +861,10 @@ DRESULT disk_read(BYTE drv, BYTE *buff, LBA_t sector, UINT count) {
 
 DRESULT disk_write (BYTE pdrv, const BYTE* buff, LBA_t sector, UINT count){
 
-	//printf("disk_write() sector=%08x,buff=%08x,cnt=%u\n", sector, buff, count);
-
-    sdcard_write(sector, count, buff);
+#ifdef SDCARD_DEBUG
+	printf("disk_write() sector=%08x,buff=%08x,cnt=%u\n", sector, buff, count);
+#endif
+    sdcard_write(sector, count, (BYTE*)buff);
 	
 #ifdef USE_CACHE
 	/* We have written a block, if this block exists in cache then update */

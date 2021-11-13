@@ -85,6 +85,7 @@ int sdcard_app_set_bus_width(void);
 int sdcard_switch(unsigned int mode, unsigned int group, unsigned int value);
 int sdcard_app_send_scr(void);
 int sdcard_app_set_blocklen(unsigned int blocklen);
+int sdcard_app_set_wr_block_erase_count(unsigned int blocks);
 int sdcard_write_single_block(unsigned int blockaddr);
 int sdcard_write_multiple_block(unsigned int blockaddr, unsigned int blockcnt);
 int sdcard_read_single_block(unsigned int blockaddr);

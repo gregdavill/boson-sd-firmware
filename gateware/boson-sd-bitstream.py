@@ -430,13 +430,13 @@ def main():
             "build/gateware/boson_sd_main_bitstream.bit": gateware_offset,   # SoC ECP5 Bitstream
             "build/software/main_fw/main_fw.bin": firmware_offset,  # main firmware
         }
-        output_bin = os.path.join(builder.output_dir, "gateware", "boson_sd_main_firmware.bin")
+        output_bin = os.path.join(builder.output_dir, "gateware", "boson_sd_main.bin")
         CombineBinaryFiles(flash_regions_final, output_bin)
 
         
         print(f"""Boson SD build complete!  
         
-    boson_sd_main_firmware.bin 
+    boson_sd_main.bin 
         size={os.path.getsize(output_bin) / 1024 :.2f}KB ({os.path.getsize(output_bin)} bytes) 
         FLASH Usage: {(float)(os.path.getsize(output_bin)) / (((2*1024*1024) - gateware_offset)/100) :.2f} %
         """)
