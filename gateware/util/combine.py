@@ -57,3 +57,15 @@ def CombineBinaryFiles(flash_regions_final, output_file):
         
         
 
+def AddMagicCrc(output_file, magic):
+    
+    data = open(output_file, "rb").read()
+
+    crc = binascii.crc32(data)
+    with open(output_file, "wb") as f:
+        print(f'Inserting magic=0x{magic :08x} & crc=0x{crc :08x} ')        
+        f.write(struct.pack("II", magic, crc))
+        f.write(data)
+        
+        
+

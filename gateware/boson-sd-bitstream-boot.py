@@ -41,6 +41,8 @@ from litex.soc.interconnect.csr import *
 from litex.soc.cores.led import LedChaser
 from rtl.streamable_hyperram import StreamableHyperRAM
 
+from util.combine import AddMagicCrc
+
 
 class _CRG(Module, AutoCSR):
 
@@ -353,7 +355,7 @@ def main():
         soc.do_exit(vns)
 
     gateware_offset = 0x00080000
-    output_bit = os.path.join(builder.output_dir, "gateware", "boson_sd_bootloader_bitstream.bit")
+    output_bit = os.path.join(builder.output_dir, "gateware", "boson_sd_bootloader.bin")
 
     soc.PackageBooter(builder)
 
@@ -367,6 +369,11 @@ def main():
 
     # create a compressed bitstream
     os.system(f"ecppack --freq 38.8 --compress {'--bootaddr 0x{:x}'.format(gateware_offset)} --input {output_config} --bit {output_bit}")
+
+    # Build binary with crc/magic
+    magic = 0x5d9ce906
+    AddMagicCrc(output_bit, magic)
+
 
    
     print(f"""Boson SD bootloader build complete!  

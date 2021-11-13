@@ -297,7 +297,7 @@ static void sdcardboot_from_json(const char *filename) {
                 log_printf("Boot: Loading %s @0x%08x", json_name, addr);
                 uint32_t length = copy_file_from_sdcard_to_ram(json_name, HYPERRAM_BASE, (addr == 0) ? MAGIC_BOOT : MAGIC_MAIN);
                 if (length == 0)
-                    return;
+                    continue;
 
                 /* Check if firmware matches FLASH? */
                 if (memcmp((void *)HYPERRAM_BASE, (void *)SPIFLASH_BASE + addr, length) == 0) {
@@ -306,8 +306,6 @@ static void sdcardboot_from_json(const char *filename) {
                 }
 
                 copy_file_from_ram_to_flash(HYPERRAM_BASE, addr, length);
-                if (length == 0)
-                    return;
             }
         }
     }
