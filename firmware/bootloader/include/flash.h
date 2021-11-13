@@ -11,8 +11,12 @@ void spiflash_read_uuid(uint8_t* uuid);
 
 int spiflash_write_stream(uint32_t addr, uint8_t* stream, int len);
 void spiflash_read_uuid(uint8_t* uuid);
+uint32_t spiflash_read_id(void);
+void spiflash_set_quad_enable(void);
 bool spiflash_protection_read(void);
-void spiflash_protection_write(bool lock);
+void spiflash_protection_set(void);
+void spiflash_protection_clear(void);
+void spiflash_set_high_perf_mode(void);
 uint32_t spiflash_read_status_register(void);
 void spiflash_write_enable(void);
 

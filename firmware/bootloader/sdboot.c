@@ -109,13 +109,15 @@ void dump_bytes(unsigned int *ptr, int count, unsigned long addr) {
 void copy_file_from_ram_to_flash(uint32_t src_addr, uint32_t dst_addr, uint32_t dst_len) {
     log_printf("Boot: Copying 0x%08lx to flash_addr=0x%08lx (%ld bytes)", src_addr, dst_addr, dst_len);
 
+	spiflash_set_high_perf_mode();
+
     uint8_t *data = (uint8_t *)src_addr;
 
     for (int addr = dst_addr; addr < dst_addr + dst_len; addr += 0x10000) {
         uint32_t len = addr + 0x10000 > (dst_addr + dst_len) ? (((dst_addr + dst_len) - addr) + 0xFF) & ~0xFF : 0x10000;
         uint32_t flash_address = addr;
 
-        log_printf("Boot:  %08x - %08x", addr, len);
+        log_printf("Boot: Programming: addr=%08x, len=%08x", addr, len);
 
         /* First block in 64K erase block */
         spiflash_write_enable();
@@ -319,6 +321,6 @@ void sdcardboot(void) {
     /* Boot from boot.json */
     log_printf("Boot: Checking boot.json");
     sdcardboot_from_json("boot.json");
-	
+
 }
 #endif

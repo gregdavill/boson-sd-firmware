@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <uart.h>
 
+#include "flash.h"
 #include "hyperram.h"
 #include "logger.h"
 #include "sdboot.h"
@@ -51,6 +52,13 @@ __attribute__((naked)) int main(int i, char **c) {
         "Info: built: "__DATE__
         " " __TIME__ "");
 
+    /* Ensure QSPI mode is on */
+    spiflash_set_quad_enable();
+
+    /* Check spiflash protection, and set if not protected */
+    log_printf("Spiflash: Info: Bootloader sectors %s", spiflash_protection_read() ? "PROTECTED" : "UNPROTECTED");
+    spiflash_protection_set();
+
     if (sdphy_card_detect_read() == 1) {
         log_printf("SDCard: No card detected");
     } else {
@@ -63,6 +71,9 @@ __attribute__((naked)) int main(int i, char **c) {
         sdcardboot();
     }
 
+    /* Ensure that FLASH protection is enabled */
+    spiflash_protection_set();
+    
     /* Set LED to OFF */
     leds_out_write(0);
 
