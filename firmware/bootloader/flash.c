@@ -159,7 +159,7 @@ void spiflash_read_uuid(uint8_t *uuid) {
 
 bool spiflash_protection_read(void) {
     uint8_t status = spiflash_read_status_register();
-    if ((status & 0b00111100) != 0b00010100) {
+    if ((status & 0b00111100) != 0b00010000) {
         return false;
     }
 
@@ -176,7 +176,7 @@ void spiflash_protection_set(void) {
 
     uint8_t status = spiflash_read_status_register();
     uint32_t config = spiflash_read_configuration_register();
-    if ((status & 0b00111100) == 0b00010100) {
+    if ((status & 0b00111100) == 0b00010000) {
         if ((config & 0x0008) == 0x0008) {
             return; // Already set
         }else{
@@ -187,7 +187,7 @@ void spiflash_protection_set(void) {
     log_printf("Spiflash: Info: Setting bootloader protection bits");
 
     status &= ~(0b00111100);
-    status |= 0b00010100;
+    status |= 0b00010000;
 
     spiflash_write_enable();
 

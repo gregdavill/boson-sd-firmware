@@ -142,12 +142,6 @@ void copy_file_from_ram_to_flash(uint32_t src_addr, uint32_t dst_addr, uint32_t 
     log_printf("Boot: FLASH loading complete");
 }
 
-enum {
-    ACK_TIMEOUT,
-    ACK_CANCELLED,
-    ACK_OK
-};
-
 /*-----------------------------------------------------------------------*/
 /* SDCard Boot                                                           */
 /*-----------------------------------------------------------------------*/
