@@ -28,6 +28,8 @@
 #include "flash.h"
 #include "logger.h"
 
+#define MAGIC 0xb5d930e9
+
 /*-----------------------------------------------------------------------*/
 /* Helpers                                                               */
 /*-----------------------------------------------------------------------*/
@@ -156,6 +158,9 @@ static uint32_t copy_file_from_sdcard_to_ram(const char *filename, unsigned long
     uint32_t br;
     uint32_t offset;
     unsigned long length;
+	uint32_t crc_supplied;
+	uint32_t crc_check;
+	uint32_t magic_supplied;
 
     FATFS_ERR(fr = f_mount(&fs, "", 1));
     if (fr != FR_OK) {
@@ -169,7 +174,7 @@ static uint32_t copy_file_from_sdcard_to_ram(const char *filename, unsigned long
     }
 
     length = f_size(&file);
-    log_printf("Boot: Copy %s to 0x%08lx (%ld bytes)", filename, ram_address, length);
+    log_printf("Boot: Copy %s to 0x%08lx (%lu bytes)", filename, ram_address, length);
     offset = 0;
     for (;;) {
         FATFS_ERR(fr = f_read(&file, (void *)ram_address + offset, 0x8000, (UINT *)&br));
@@ -186,6 +191,28 @@ static uint32_t copy_file_from_sdcard_to_ram(const char *filename, unsigned long
 
     FATFS_ERR(f_close(&file));
     FATFS_ERR(f_unmount(""));
+
+	memcpy((void*)&crc_supplied, (void*)ram_address, 4);
+	memcpy((void*)&magic_supplied, (void*)ram_address, 4);
+
+	log_printf("Boot: Check %s: len=%lu bytes, crc=%08lx", filename, ram_address, length, crc_supplied);
+    
+	/* magic check */
+	if(magic_supplied == MAGIC) {
+		log_printf("Boot: Magic word passed, image is likely for us");
+	} else {
+		log_printf("Boot: Error: Magic word failed, image not likely for us.", crc_supplied, crc_check);
+		return 0;
+	}
+
+	/* CRC32 check */
+	crc_check = crc32((void*)(ram_address+4), length-4);
+	if(crc_check == crc_supplied) {
+		log_printf("Boot: crc passed");
+	} else {
+		log_printf("Boot: crc fail, crc_supplied=0x%08lx, crc_check=0x%08lx", crc_supplied, crc_check);
+		return 0;
+	}
 
     return length;
 }
