@@ -683,8 +683,6 @@ DSTATUS disk_initialize(BYTE pdrv)
 	DWORD resp[4];
 	BYTE ty;
 
-	printf("disk_initialize()\n");
-
 #ifdef USE_CACHE
 	sd_cache_init(HYPERRAM_BASE + HYPERRAM_SIZE/2, HYPERRAM_SIZE/512/2);
 #endif
@@ -693,7 +691,7 @@ DSTATUS disk_initialize(BYTE pdrv)
 	sdcard_set_clk_freq(SDCARD_CLK_FREQ_INIT, 0);
 	dly_us(1000);
 
-	for (timeout=1000; timeout>0; timeout--) {
+	for (timeout=500; timeout>0; timeout--) {
 		/* Set SDCard in SPI Mode (generate 80 dummy clocks) */
 		sdphy_init_initialize_write(1);
 		dly_us(100);
@@ -710,14 +708,14 @@ DSTATUS disk_initialize(BYTE pdrv)
 
 	/*---- Card is 'idle' state ----*/
 
-	int Timer = 1000;				   /* Initialization timeout of 1000 msec */
+	int Timer = 500;				   /* Initialization timeout of 1000 msec */
 	if (send_cmd(CMD8, 0x1AA, 1, resp) /* Is the card SDv2? */
 		&& (resp[0] & 0xFFF) == 0x1AA)
 	{ /* The card can work at vdd range of 2.7-3.6V */
 		do
 		{ /* Wait while card is busy state (use ACMD41 with HCS bit) */
 
-			dly_us(1000); /* 1ms */
+			dly_us(100); /* 1ms */
 
 			/* This loop takes a time. Insert task rotation here for multitask envilonment. */
 
@@ -819,7 +817,7 @@ DSTATUS disk_initialize(BYTE pdrv)
 	return Stat;
 
 di_fail:
-	printf("Init Fail :(\n");
+	log_printf("SDCard: Error: Init Fail\n");
 	
 	Stat |= STA_NOINIT; /* Set STA_NOINIT */
 	return Stat;

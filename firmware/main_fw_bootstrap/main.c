@@ -1,14 +1,12 @@
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
-
-#include <uart.h>
-#include <irq.h>
-
-#include "hyperram.h"
-
 #include <generated/csr.h>
 #include <generated/mem.h>
+#include <irq.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <uart.h>
+
+#include "hyperram.h"
 
 /* prototypes */
 void isr(void);
@@ -44,17 +42,22 @@ __attribute__((naked)) int main(int i, char **c) {
     printf("\n (c) Copyright 2021 Greg Davill \n");
     printf(
         " fw built: "__DATE__
-        " " __TIME__ " \n\n");
+        " " __TIME__ " \n");
 
     /* init HyperRAM */
+    printf("HyperRAM phase alignment\n");
     hyperram_init();
 
-    printf("\n");
+    printf("\n\n");
 
     prbs_memtest(HYPERRAM_BASE, HYPERRAM_SIZE);
 
     /* Set LED to OFF */
     leds_out_write(0);
+    uart_sync();
+
+    irq_setie(0);
+    irq_setmask(0);
 
     /* Perform a jump directly to our firmware located in the memory mapped SPIFLASH 
    * Note we configure SPI_BASE as the origin point of our firmware.

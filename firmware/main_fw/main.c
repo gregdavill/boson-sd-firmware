@@ -1,17 +1,19 @@
-#include <crc.h>
-#include <generated/csr.h>
-#include <generated/git.h>
-#include <generated/mem.h>
-#include <irq.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include <uart.h>
+#include <irq.h>
+
+#include <generated/csr.h>
+#include <generated/git.h>
+#include <generated/mem.h>
+
+#include "ff.h"
 
 #include "boson.h"
-#include "ff.h"
 #include "diskio.h"
 #include "logger.h"
 #include "timer.h"
@@ -73,7 +75,7 @@ static const char* put_rc(FRESULT rc) {
     do {                                                                                                                \
         FRESULT rc;                                                                                                     \
         if ((rc = EXP) != FR_OK) {                                                                                      \
-            log_printf("FatFs: Error: %s:%d:%s(): \"" #EXP "\": FRESULT=%s", __FILE__, __LINE__, __func__, put_rc(rc)); \
+            log_printf("FatFs: Error: \"" #EXP "\": FRESULT=%s", put_rc(rc)); \
         }                                                                                                               \
     } while (0);
 
@@ -168,8 +170,8 @@ int main(int i, char** c) {
         " fw built: "__DATE__
         " " __TIME__ "");
 
-    printf(" Migen git sha1: " MIGEN_GIT_SHA1);
-    printf(" LiteX git sha1: " LITEX_GIT_SHA1);
+    log_printf(" Migen git sha1: " MIGEN_GIT_SHA1);
+    log_printf(" LiteX git sha1: " LITEX_GIT_SHA1);
 
     FATFS FatFs; /* FatFs work area needed for each volume */
     FIL Fil;     /* File object needed for each open file */
@@ -189,10 +191,10 @@ int main(int i, char** c) {
 
     log_printf("Cap: boson_clk_freq=%lu", boson_boson_frequency_value_read());
 
-    if (sdphy_card_detect_read() == 0) {
+    if (sdphy_card_detect_read() == 1) {
         log_printf("No SD Card inserted, please insert");
-        while (sdphy_card_detect_read() == 0)
-            ;
+        while (sdphy_card_detect_read() == 1) {
+        }
     }
 
     FATFS_ERR(fr = f_mount(&FatFs, "", 1)); /* Give a work area to the default drive */
@@ -201,18 +203,25 @@ int main(int i, char** c) {
         /* Find new dir and create */
         char path[255] = {0};
         UINT dir_cnt = 0;
-        FATFS_ERR(fr = f_mkdir("DCIM"));
+        fr = f_mkdir("DCIM");
+		if((fr != FR_OK) && (fr != FR_EXIST)){
+			FATFS_ERR(fr);
+		}
 
-        FATFS_ERR(fr = scan_folders("DCIM/", &dir_cnt));
+		FATFS_ERR(fr = f_chdir("DCIM"));
+
+        FATFS_ERR(fr = scan_folders("", &dir_cnt));
         dir_cnt += 1;
         log_printf("dir_cnt = %lu", dir_cnt);
 
-        sprintf(path, "/DCIM/BSN%04u", dir_cnt);
+        sprintf(path, "BSN%04u", dir_cnt);
         FATFS_ERR(fr = f_mkdir(path));
+		FATFS_ERR(fr = f_chdir(path));
+
 
         for (unsigned int i = 0; i < 500; i++) {
             char name[64];
-            sprintf(name, "%s/IMG_%04u.RAW", path, i);
+            sprintf(name, "IMG_%04u.RAW", i);
 
             log_printf("%s", name);
 
@@ -221,7 +230,7 @@ int main(int i, char** c) {
             boson_capture_wait();
 
             /* Flush caches because we've used the DMA, probably not needed, as the CPU never reads the Hyperram */
-			// flush_cpu_dcache(); 
+            // flush_cpu_dcache();
             // flush_l2_cache();
 
             /* Create our file */
@@ -231,20 +240,18 @@ int main(int i, char** c) {
             ptr = (void*)HYPERRAM_BASE;
 
             if (fr == FR_OK) {
-				/* Handle all the FAT changes upfront */
+                /* Handle all the FAT changes upfront */
                 FATFS_ERR(fr = f_expand(&Fil, filesize, 1));
 
                 if (0) {
-
                     /* Basic File writing, will typically write 64 sectors at a time, */
                     FATFS_ERR(fr = f_write(&Fil, ptr, filesize, &bw));
                     if (bw != filesize) {
                         log_printf("Cap: Error: file=%s, (bw=%lu)!=(filesize=%lu)\n", name, bw, filesize);
-						continue;
+                        continue;
                     }
 
                 } else {
-
                     /* Accessing the contiguous file via low-level disk functions */
                     FIL* fp = &Fil;
 
@@ -253,14 +260,12 @@ int main(int i, char** c) {
                     LBA_t lba = fp->obj.fs->database + fp->obj.fs->csize * (fp->obj.sclust - 2);
 
                     /* Write sequential sectors from top of the file at a time */
-					/* I don't think this function ever returns an error */
+                    /* I don't think this function ever returns an error */
                     FATFS_ERR(disk_write(drv, ptr, lba, filesize / 512));
-
                 }
 
                 FATFS_ERR(fr = f_close(&Fil));
             }
-
             busy_wait(330);
         }
     }
@@ -268,7 +273,6 @@ int main(int i, char** c) {
     FATFS_ERR(f_unmount(""));
 
     while (1) {
-
     }
 
     return 0;

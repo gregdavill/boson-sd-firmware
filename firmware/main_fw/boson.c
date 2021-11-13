@@ -175,7 +175,7 @@ FLR_RESULT dispatcher_rx(uint8_t *recvData, uint32_t *recvBytes) {
         busy_wait(1);
     }
 
-    str_p += snprintf(str_p, sizeof(str) - (str_p - str),"(%u ms)\n", timeout_count);
+    str_p += snprintf(str_p, sizeof(str) - (str_p - str),"(%u ms)", timeout_count);
     log_printf("Boson: Dispatcher: %s", str);
 
     return errorCode;
