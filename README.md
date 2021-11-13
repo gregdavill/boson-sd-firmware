@@ -7,7 +7,6 @@ This project contains firmware and gateware required to run the boson frame grab
  - firmware: firmware that runs on a softcore RISC-V
  - gateware: gateware that describes the hardware inside the FPGA
 
- 
 
 ## Bootloader
 
@@ -21,7 +20,7 @@ The bootloader bitstream has a `bootaddr` value set to `0x80000`. When it trigge
 
 ### Upgrading the bootloader
 
-The bootloader FLASH sectors are locked, to ensure no acidential writes cause corruption. However the bootloader does support unlocking it's FLASH sectors `0x00000`-`0x80000`. 
+The bootloader FLASH sectors are locked, to ensure no accidental writes cause corruption. However the bootloader does support unlocking it's FLASH sectors `0x00000`-`0x80000`. 
 This is achieved using a json configuration file instead of just a standard binary file.
 
 Here is an example of a json file that will unlock the bootloader sectors and then load a binary at `0x00000`.
