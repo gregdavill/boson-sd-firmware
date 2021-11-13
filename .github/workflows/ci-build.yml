@@ -39,3 +39,16 @@ jobs:
           python3 boson-sd-bitstream.py --target main --update-firmware
           popd
 
+      - name: Upload bootloader
+        uses: actions/upload-artifact@v2
+        with:
+          name: bootloader update
+          path: ${{ github.workspace }}/gateware/build/gateware/boson_sd_bootloader.bin
+
+      - name: Upload main firmware
+        uses: actions/upload-artifact@v2
+        with:
+          name: main firmware
+          path: ${{ github.workspace }}/gateware/build/gateware/boson_sd_main.bin
+  
+
