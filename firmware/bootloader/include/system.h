@@ -2,35 +2,31 @@
 #define __SYSTEM_H
 
 #include <csr-defs.h>
-
 #include <generated/soc.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-__attribute__((unused)) static void flush_cpu_icache(void)
-{
+__attribute__((unused)) static void flush_cpu_icache(void) {
 #if defined(CONFIG_CPU_VARIANT_MINIMAL)
-  /* No instruction cache */
+    /* No instruction cache */
 #else
-  asm volatile(
-    ".word(0x100F)\n"
-    "nop\n"
-    "nop\n"
-    "nop\n"
-    "nop\n"
-    "nop\n"
-  );
+    asm volatile(
+        ".word(0x100F)\n"
+        "nop\n"
+        "nop\n"
+        "nop\n"
+        "nop\n"
+        "nop\n");
 #endif
 }
 
-__attribute__((unused)) static void flush_cpu_dcache(void)
-{
+__attribute__((unused)) static void flush_cpu_dcache(void) {
 #if defined(CONFIG_CPU_VARIANT_MINIMAL) || defined(CONFIG_CPU_VARIANT_LITE)
-  /* No data cache */
+    /* No data cache */
 #else
-  asm volatile(".word(0x500F)\n");
+    asm volatile(".word(0x500F)\n");
 #endif
 }
 
