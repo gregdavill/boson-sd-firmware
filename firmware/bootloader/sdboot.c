@@ -192,21 +192,21 @@ static uint32_t copy_file_from_sdcard_to_ram(const char *filename, unsigned long
     FATFS_ERR(f_close(&file));
     FATFS_ERR(f_unmount(""));
 
-	memcpy((void*)&crc_supplied, (void*)ram_address, 4);
+	memcpy((void*)&crc_supplied, (void*)ram_address+4, 4);
 	memcpy((void*)&magic_supplied, (void*)ram_address, 4);
 
-	log_printf("Boot: Check %s: len=%lu bytes, crc=%08lx", filename, ram_address, length, crc_supplied);
+	log_printf("Boot: Check %s: len=%lu bytes, crc=%08lx", filename, length, crc_supplied);
     
 	/* magic check */
 	if(magic_supplied == MAGIC) {
 		log_printf("Boot: Magic word passed, image is likely for us");
 	} else {
-		log_printf("Boot: Error: Magic word failed, image not likely for us.", crc_supplied, crc_check);
+		log_printf("Boot: Error: Magic word failed, image not likely for us. magic_file=0x%08lx, magic=0x%08lx", magic_supplied, MAGIC);
 		return 0;
 	}
 
 	/* CRC32 check */
-	crc_check = crc32((void*)(ram_address+4), length-4);
+	crc_check = crc32((void*)(ram_address+8), length-8);
 	if(crc_check == crc_supplied) {
 		log_printf("Boot: crc passed");
 	} else {

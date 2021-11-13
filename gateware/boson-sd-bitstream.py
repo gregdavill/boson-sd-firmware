@@ -388,9 +388,9 @@ def main():
         os.system(f"ecppack --freq 38.8 --compress --input {input_config} --bit {output_bit}")
 
         # Determine Bitstream size
-        stage_1_filesize = os.path.getsize(output_bit)
-        alignment = 65536 - 1 # FLASH Block Size 
-        firmware_offset = (stage_1_filesize + alignment) & ~(alignment)  # Add padding, align FW to next FLASH 64K block
+        stage_1_filesize = os.path.getsize(output_bit) + 8 # Add 8 for magic/crc
+        alignment = 4 - 1 # Pad out to next word address
+        firmware_offset = (stage_1_filesize + alignment) & ~(alignment)  # Add padding, align FW to next block
         firmware_offset += gateware_offset  # bitstream offset
         print(f"Compressed file size: 0x{stage_1_filesize:0x}")
         print(f"Placing firmware at: 0x{firmware_offset:0x}")
