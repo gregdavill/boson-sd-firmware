@@ -62,7 +62,7 @@ static int basic_memtest(void) {
     return 1;
 }
 
-void hyperram_init(void) {
+int hyperram_init(void) {
     int window = 0;
     int clk_del = 0;
     int io_del = 0;
@@ -101,7 +101,7 @@ void hyperram_init(void) {
 
             log_printf("Hyperram: PLL phase tuned: window=%u", window);
 
-            return;
+            return 0;
         }
         window = 0;
         clk_del = (clk_del + 1);
@@ -112,13 +112,7 @@ void hyperram_init(void) {
         crg_slip_hr2x90_write(0);
         crg_slip_hr2x_write(0);
     }
-
-    log_printf("Hyperram: Error: RAM Init failed, restarting");
-    busy_wait(100);
-
-    while (1) {
-        reset_out_write(1);
-    }
+    return 1;
 }
 
 #else

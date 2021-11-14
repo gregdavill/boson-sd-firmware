@@ -62,8 +62,23 @@ __attribute__((naked)) int main(int i, char **c) {
     if (sdphy_card_detect_read() == 1) {
         log_printf("SDCard: No card detected");
     } else {
+
         /* init HyperRAM */
-        hyperram_init();
+        int timeout = 10;
+        while(timeout--)
+        {
+            if(hyperram_init() == 0)
+                break;
+            busy_wait(10);
+        }
+        if(timeout == 0){
+            log_printf("Hyperram: Error: RAM Init failed, restarting");
+            busy_wait(100);
+
+            while (1) {
+                reset_out_write(1);
+            }
+        }
 
         busy_wait(500);
 
