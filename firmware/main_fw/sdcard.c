@@ -200,6 +200,11 @@ void sdcard_set_clk_freq(unsigned long clk_freq, int show) {
 /*-----------------------------------------------------------------------*/
 
 static inline int sdcard_send_command(uint32_t arg, uint8_t cmd, uint8_t rsp) {
+	if((sdcore_cmd_event_read() & 1) == 0)
+		log_printf("Error: sdcore_cmd_event_read() not IDLE");
+	if((sdcore_data_event_read() & 1) == 0)
+		log_printf("Error: sdcore_data_event_read() not IDLE");
+
 	sdcore_cmd_argument_write(arg);
 	sdcore_cmd_command_write((cmd << 8) | rsp);
 	sdcore_cmd_send_write(1);
@@ -539,24 +544,40 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 			sdmem2block_dma_length_write(512*nblocks);
 			sdmem2block_dma_enable_write(1);
 		}else{
+			if(nblocks == 1){
+				log_printf("Error?");
+			}
 			//log_printf("sdcard_write() cnt=%lu, buf=%08lx", count, (uint32_t)buf);
-			dly_us(1000);
+				//dly_us(1000);
+				if((sdcore_cmd_event_read() & 1) == 0)
+					log_printf("Error: sdcore_cmd_event_read() not IDLE");
+				if((sdcore_data_event_read() & 1) == 0)
+					log_printf("Error: sdcore_data_event_read() not IDLE");
 			writer_reset_write(1);
-			writer_enable_write(0);
-			writer_burst_size_write(128);
+			writer_external_sync_write(0);
+			writer_burst_size_write(32);
 			writer_transfer_size_write((512/4)*nblocks);
 			writer_start_address_write((uint32_t)buf >> 2);
 			writer_sink_mux_write(1);
-			writer_external_sync_write(0);
 			writer_enable_write(1);
+
+//			printf(".");
 		}
 
 		/* Write Block(s) to SDCard */
 #ifdef SDCARD_CMD23_SUPPORT
 		sdcard_set_block_count(nblocks);
 #endif
-		if (nblocks > 1)
+		if (nblocks > 1){
 			sdcard_write_multiple_block(block, nblocks);
+
+	// 		uint32_t r[SD_CMD_RESPONSE_SIZE/4];
+	// csr_rd_buf_uint32(CSR_SDCORE_CMD_RESPONSE_ADDR,
+	// 		  r, SD_CMD_RESPONSE_SIZE/4);
+	// printf("%08x %08x %08x %08x\n", r[0], r[1], r[2], r[3]);
+
+	// 		printf(".");
+		}
 		else
 			sdcard_write_single_block(block);
 
@@ -573,23 +594,27 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 		}else{
 
 			
-			while((writer_done_read() == 0) && sdphy_dataw_status_idle_read()){
+			//printf(".");
+			while(sdphy_dataw_status_idle_read() == 0){
 				dly_us(10);
 			}
-
-			dly_us(50);
+			
+//			printf(".");
+//			dly_us(50);
 
 
 			/* DMA is "connected" to the sdcore when it's enabled. Keep this delay here to ensure 
 			 * that we stay connected while the fifo still has data in it. 
 			 */
-			writer_enable_write(0);
+			writer_reset_write(1);
+			
 		}
 		
 
 
 		/* Stop transmission (Only for multiple block writes) */
 		if (nblocks > 1){
+//			printf(".");
 			sdcard_stop_transmission();
 		}
 
@@ -599,7 +624,7 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 		count -= nblocks;
 	}
 
-	dly_us(500);
+//	dly_us(200);
 }
 #endif
 
