@@ -164,6 +164,7 @@ typedef struct {
 #endif
 	DWORD	n_fatent;		/* Number of FAT entries (number of clusters + 2) */
 	DWORD	fsize;			/* Size of an FAT [sectors] */
+	DWORD   sclust;			/* Start Cluster, to skip needing to traverse entire FAT */
 	LBA_t	volbase;		/* Volume base sector */
 	LBA_t	fatbase;		/* FAT base sector */
 	LBA_t	dirbase;		/* Root directory base sector/cluster */

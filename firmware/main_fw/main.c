@@ -218,23 +218,31 @@ int main(int i, char** c) {
         FATFS_ERR(fr = f_mkdir(path));
 		
 
-        for (unsigned int i = 0; i < 500; i++) {
+        DIR Dir = {0};
+        for (unsigned int i = 0; i < 10000; i++) {
             char name[64] = {0};
             sprintf(name, "%s/IMG_%04u.RAW", path, i);
-
-            log_printf("%s", name);
 
             /* Capture from the Boson Stream */
             boson_capture_configure();
             boson_capture_wait();
 
-            /* Flush caches because we've used the DMA, probably not needed, as the CPU never reads the Hyperram */
-            // flush_cpu_dcache();
-            // flush_l2_cache();
+            /* If we have a cached DIR object, then we only need the relative path */
+            if(FatFs.sclust){
+                sprintf(name, "IMG_%04u.RAW", i);
+            }
 
             /* Create our file */
-            FATFS_ERR(fr = f_open(&Fil, name, FA_WRITE | FA_CREATE_ALWAYS));
-
+            FATFS_ERR(fr = f_open_ex(&Fil, name, FA_WRITE | FA_CREATE_ALWAYS, &Dir));
+            log_printf("%s", name);
+            
+            /* Cache directory object to use as a starting point for the next file. */
+            if(Dir.dptr >= (DWORD)FatFs.csize * 512){
+                log_printf("Info: New Cluster, clearing dptr");
+                Dir.dptr = 0;
+            }
+            FatFs.sclust = Dir.clust;
+            
             DWORD filesize = 640 * 1024;
             ptr = (void*)HYPERRAM_BASE;
 
@@ -261,15 +269,16 @@ int main(int i, char** c) {
                     LBA_t lba = fp->obj.fs->database + fp->obj.fs->csize * (fp->obj.sclust - 2);
 
                     /* Write sequential sectors from top of the file at a time */
-                    /* I don't think this function ever returns an error */
-                    disk_write(drv, ptr, lba, filesize / 512);
+                    /* Currently this function can not return an error */
+                    UINT chunk_size = filesize;
+                    for(UINT offset =0; offset < filesize; offset+= chunk_size)
+                        disk_write(drv, ptr + offset, lba + offset/512, chunk_size / 512);
+
 					
                 }
 
                 FATFS_ERR(fr = f_close(&Fil));
             }
-			
-            busy_wait(100);
         }
     }
 

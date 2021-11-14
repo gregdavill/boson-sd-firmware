@@ -1720,6 +1720,8 @@ static FRESULT dir_next (	/* FR_OK(0):succeeded, FR_NO_FILE:End of table, FR_DEN
 	DWORD ofs, clst;
 	FATFS *fs = dp->obj.fs;
 
+	if(stretch)
+		fs->sclust = 0;
 
 	ofs = dp->dptr + SZDIRE;	/* Next entry */
 	if (ofs >= (DWORD)((FF_FS_EXFAT && fs->fs_type == FS_EXFAT) ? MAX_DIR_EX : MAX_DIR)) dp->sect = 0;	/* Disable it if the offset reached the max value */
@@ -2362,7 +2364,10 @@ static FRESULT dir_find (	/* FR_OK(0):succeeded, !=0:error */
 	BYTE a, ord, sum;
 #endif
 
-	res = dir_sdi(dp, 0);			/* Rewind directory object */
+	if(fs->sclust == 0)
+		res = dir_sdi(dp, 0);			/* Rewind directory object */
+	else
+		res = dir_sdi(dp, dp->dptr);
 	if (res != FR_OK) return res;
 #if FF_FS_EXFAT
 	if (fs->fs_type == FS_EXFAT) {	/* On the exFAT volume */
@@ -2483,7 +2488,8 @@ static FRESULT dir_register (	/* FR_OK:succeeded, FR_DENIED:no free entry or too
 		dp->fn[NSFLAG] = NS_NOLFN;		/* Find only SFN */
 		for (n = 1; n < 100; n++) {
 			gen_numname(dp->fn, sn, fs->lfnbuf, n);	/* Generate a numbered name */
-			res = dir_find(dp);				/* Check if the name collides with existing SFN */
+			if(fs->sclust == 0)
+				res = dir_find(dp);				/* Check if the name collides with existing SFN */
 			if (res != FR_OK) break;
 		}
 		if (n == 100) return FR_DENIED;		/* Abort if too many collisions */
@@ -3016,6 +3022,10 @@ static FRESULT follow_path (	/* FR_OK(0): successful, !=0: error code */
 		dp->obj.sclust = fs->cdir;			/* Start at the current directory */
 	} else
 #endif
+	if(fs->sclust){
+		while (IsSeparator(*path)) path++;	/* Strip separators */
+		dp->obj.sclust = fs->sclust;
+	} else
 	{										/* With heading separator */
 		while (IsSeparator(*path)) path++;	/* Strip separators */
 		dp->obj.sclust = 0;					/* Start from the root directory */
@@ -3685,21 +3695,9 @@ FRESULT f_open_ex (
 	res = mount_volume(&path, &fs, mode);
 	if (res == FR_OK) {
 		INIT_NAMBUF(fs);
-		//if(dp->obj.fs == 0){
-			dp->obj.fs = fs;
-			//printf(".");
-			// timer1_update_value_write(1);
-			// uint32_t t = timer1_value_read();
-			res = follow_path(dp, path);	/* Follow the file path */
 
-			//printf("d:%08x ", dp->obj.sclust);
-			// timer1_update_value_write(1);
-			// t = t - timer1_value_read();
-
-			// t /= (75000000UL / (int)1e6);
-			// printf(" \e[92;1m[%01lu.%06lu]\e[0m - ", t / (int)1e6 , t % (int)1e6);
-		//}
-		
+		dp->obj.fs = fs;
+		res = follow_path(dp, path);	/* Follow the file path */
 
 #if !FF_FS_READONLY	/* Read/Write configuration */
 		if (res == FR_OK) {
