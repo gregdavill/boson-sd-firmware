@@ -215,9 +215,11 @@ int main(int i, char** c) {
 
 
         FATFS_ERR(fr = scan_folders("DCIM", &dir_cnt));
+        log_printf("Info: Existing directory count: %u", dir_cnt);
+            
 
         /* Run for 10 folders */
-        for(int i = 0; i < 10; i++){
+        for(int j = 0; j < 10; j++){
             /* Ensure we start from root FAT cluster */
             FatFs.sclust = 0;
 
@@ -285,7 +287,7 @@ int main(int i, char** c) {
                         UINT chunk_size = filesize;
                         for(UINT offset =0; offset < filesize; offset+= chunk_size)
                             disk_write(drv, ptr + offset, lba + offset/512, chunk_size / 512);
-                            
+
                     }
 
                     FATFS_ERR(fr = f_close(&Fil));
