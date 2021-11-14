@@ -100,13 +100,13 @@ int sdcard_wait_cmd_done(void) {
 	unsigned int event;
 #ifdef SDCARD_DEBUG
 	uint32_t r[SD_CMD_RESPONSE_SIZE/4];
+	//printf("cmdevt_wait ");
 #endif
-	printf("cmdevt_wait ");
 	for (;;) {
 		event = sdcore_cmd_event_read();
 #ifdef SDCARD_DEBUG
 #endif
-		busy_wait_us(20);
+		busy_wait_us(10);
 		if (event & 0x1)
 			break;
 	}
@@ -114,12 +114,19 @@ int sdcard_wait_cmd_done(void) {
 	/* Load bearing delay. 
 	 * When SDCARD_DEBUG is undefined 
 	 * this delay is required for correct operation */
-	busy_wait_us(50);
+	busy_wait_us(100);
+
+
+if(event != 1){
+		log_printf("SDCard: Error: cmdevt: =0x%02x", event);
+	while(1){
+	}
+}
 
 #ifdef SDCARD_DEBUG
-	csr_rd_buf_uint32(CSR_SDCORE_CMD_RESPONSE_ADDR,
-			  r, SD_CMD_RESPONSE_SIZE/4);
-	printf("%08x %08x %08x %08x\n", r[0], r[1], r[2], r[3]);
+	//csr_rd_buf_uint32(CSR_SDCORE_CMD_RESPONSE_ADDR,
+	//		  r, SD_CMD_RESPONSE_SIZE/4);
+	//printf("%08x %08x %08x %08x\n", r[0], r[1], r[2], r[3]);
 #endif
 	if (event & 0x4)
 		return SD_TIMEOUT;
@@ -130,17 +137,21 @@ int sdcard_wait_cmd_done(void) {
 
 int sdcard_wait_data_done(void) {
 	unsigned int event;
-	printf("dataevt: %08x, status=%08lx\n", event, sdphy_dataw_status_read());
+#ifdef SDCARD_DEBUG
+	//printf("dataevt: %08x, status=%08lx\n", event, sdphy_dataw_status_read());
+#endif
 	for (;;) {
 		event = sdcore_data_event_read();
-#ifdef SDCARD_DEBUG
-#endif
 		if (event & 0x1)
 			break;
 		busy_wait_us(10);
 	}
 
-	busy_wait_us(50);
+	busy_wait_us(100);
+
+if(event != 1){
+		log_printf("SDCard: Error: dataevt: =0x%02x", event);
+}
 
 	if (event & 0x4)
 		return SD_TIMEOUT;
@@ -342,7 +353,7 @@ int sdcard_write_multiple_block(unsigned int blockaddr, unsigned int blockcnt) {
 
 int sdcard_read_single_block(unsigned int blockaddr) {
 #ifdef SDCARD_DEBUG
-	printf("CMD17: READ_SINGLE_BLOCK\n");
+	//printf("CMD17: READ_SINGLE_BLOCK\n");
 #endif
 	sdcore_block_length_write(512);
 	sdcore_block_count_write(1);
@@ -368,7 +379,6 @@ int sdcard_stop_transmission(void) {
 #ifdef SDCARD_DEBUG
 	printf("CMD12: STOP_TRANSMISSION\n");
 #endif
-	dly_us(100);
 	return sdcard_send_command(0, 12, SDCARD_CTRL_RESPONSE_SHORT_BUSY);
 }
 
@@ -472,7 +482,7 @@ void sdcard_read(uint32_t block, uint32_t count, uint8_t* buf)
 
 		/* Read Block(s) from SDCard */
 #ifdef SDCARD_CMD23_SUPPORT
-		sdcard_set_block_count(nblocks);
+		//sdcard_set_block_count(nblocks);
 #endif
 		if (nblocks > 1)
 			sdcard_read_multiple_block(block, nblocks);
@@ -481,7 +491,7 @@ void sdcard_read(uint32_t block, uint32_t count, uint8_t* buf)
 
 		/* Wait for DMA Writer to complete */
 		while ((sdblock2mem_dma_done_read() & 0x1) == 0);
-	    sdblock2mem_dma_enable_write(0);
+	    
 
 		/* Stop transmission (Only for multiple block reads) */
 		if (nblocks > 1)
@@ -489,7 +499,6 @@ void sdcard_read(uint32_t block, uint32_t count, uint8_t* buf)
 
 	
 #ifdef SDCARD_DEBUG
-
 	flush_cpu_dcache();
 	flush_l2_cache();
 	//dump_bytes(buf, 512, buf);
@@ -501,6 +510,7 @@ void sdcard_read(uint32_t block, uint32_t count, uint8_t* buf)
 	}
 	
 
+	sdblock2mem_dma_enable_write(0);
 	/* Flush caches */
 	flush_cpu_dcache();
 	flush_l2_cache();
@@ -529,8 +539,8 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 			sdmem2block_dma_length_write(512*nblocks);
 			sdmem2block_dma_enable_write(1);
 		}else{
-			log_printf("sdcard_write() cnt=%lu, buf=%08lx", count, (uint32_t)buf);
-			//dly_us(1000);
+			//log_printf("sdcard_write() cnt=%lu, buf=%08lx", count, (uint32_t)buf);
+			dly_us(1000);
 			writer_reset_write(1);
 			writer_enable_write(0);
 			writer_burst_size_write(128);
@@ -561,23 +571,25 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 
 	        sdmem2block_dma_enable_write(0);
 		}else{
-			while(writer_done_read() == 0){
-				printf(".");
+
+			
+			while((writer_done_read() == 0) && sdphy_dataw_status_idle_read()){
 				dly_us(10);
 			}
+
+			dly_us(50);
+
 
 			/* DMA is "connected" to the sdcore when it's enabled. Keep this delay here to ensure 
 			 * that we stay connected while the fifo still has data in it. 
 			 */
-			dly_us(500);
 			writer_enable_write(0);
 		}
 		
 
 
-		/* Stop transmission (Only for multiple block reads) */
+		/* Stop transmission (Only for multiple block writes) */
 		if (nblocks > 1){
-	        dly_us(1000);
 			sdcard_stop_transmission();
 		}
 
@@ -587,6 +599,7 @@ void sdcard_write(uint32_t block, uint32_t count, uint8_t* buf)
 		count -= nblocks;
 	}
 
+	dly_us(500);
 }
 #endif
 
@@ -830,7 +843,7 @@ di_fail:
 DRESULT disk_read(BYTE drv, BYTE *buff, LBA_t sector, UINT count) {
 
 #ifdef SDCARD_DEBUG
-	printf("sdcard_read(), block=%08lx, count=%u, buff=%08lx\n", sector, count, (uint32_t)buff);
+	//printf("sdcard_read(), block=%08lx, count=%u, buff=%08lx\n", sector, count, (uint32_t)buff);
 #endif
 
 #ifdef USE_CACHE

@@ -269,8 +269,6 @@ int main(int i, char** c) {
                 FATFS_ERR(fr = f_close(&Fil));
             }
 			
-			/* SYNC */
-			disk_ioctl(0, 0, 0);
             busy_wait(100);
         }
     }
