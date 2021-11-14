@@ -1,30 +1,83 @@
 diff --git a/litesdcard/phy.py b/litesdcard/phy.py
-index 53a7143..13edb55 100644
+index 53a7143..1fe9f8e 100644
 --- a/litesdcard/phy.py
 +++ b/litesdcard/phy.py
-@@ -521,11 +521,20 @@ class SDPHYIOGen(SDPHYIO):
+@@ -11,7 +11,7 @@ from operator import or_
+ from migen import *
+ from migen.genlib.resetsync import AsyncResetSynchronizer
+ 
+-from litex.build.io import SDROutput, SDRTristate
++from litex.build.io import SDROutput, SDRTristate, DDROutput
+ 
+ from litex.soc.interconnect.csr import *
+ from litex.soc.interconnect import stream
+@@ -319,6 +319,7 @@ class SDPHYDATAW(Module, AutoCSR):
+             CSRField("accepted",    size=1, offset=0),
+             CSRField("crc_error",   size=1, offset=1),
+             CSRField("write_error", size=1, offset=2),
++            CSRField("idle", size=1, offset=3),
+         ])
+ 
+         # # #
+@@ -345,14 +346,16 @@ class SDPHYDATAW(Module, AutoCSR):
+                 NextState("CLK8")
+             )
+         )
++        self.comb += self.status.fields.idle.eq(fsm.ongoing("IDLE"))
++
+         # CHECKME: Understand why this is needed.
+         fsm.act("CLK8",
+             pads_out.clk.eq(1),
+-            pads_out.cmd.oe.eq(1),
+-            pads_out.cmd.o.eq(1),
++            # pads_out.cmd.oe.eq(1),
++            # pads_out.cmd.o.eq(1),
+             If(pads_out.ready,
+                 NextValue(count, count + 1),
+-                If(count == (8-1),
++                If(count == (32-1),
+                     NextValue(count, 0),
+                     NextState("START")
+                 )
+@@ -521,12 +524,22 @@ class SDPHYIOGen(SDPHYIO):
              self.comb += pads.rst.eq(0)
  
          # Clk
--        self.specials += SDROutput(
--            clk = ClockSignal("sys"),
--            i   = clocker.clk,
--            o   = pads.clk
--        )
 +        clk = Signal()
-+        self.specials += [
-+            SDROutput(
-+                clk = ClockSignal("sys"),
-+                i   = clocker.clk,
-+                o   = clk,
-+            ),
-+            Instance("DELAYG",
-+                p_DEL_MODE  = "USER_DEFINED",
-+                p_DEL_VALUE = 120, # (25ps per tap)
-+                i_A         = clk,
-+                o_Z         = pads.clk
-+            )
-+        ]
++        dly_clk = Signal()
++        # self.sync += dly_clk.eq(clocker.clk)
+         self.specials += SDROutput(
+             clk = ClockSignal("sys"),
+             i   = clocker.clk,
+-            o   = pads.clk
++            o   = clk
++        )
++        self.specials += Instance("DELAYG",
++            p_DEL_MODE  = "USER_DEFINED",
++            p_DEL_VALUE = 127, # (25ps per tap)
++            i_A         = clk,
++            o_Z         = pads.clk
+         )
  
++
          # Cmd
          self.specials += SDRTristate(
+             clk = ClockSignal("sys"),
+@@ -594,7 +607,7 @@ class SDPHYIOEmulator(SDPHYIO):
+ # SDCard PHY ---------------------------------------------------------------------------------------
+ 
+ class SDPHY(Module, AutoCSR):
+-    def __init__(self, pads, device, sys_clk_freq, cmd_timeout=10e-3, data_timeout=10e-3):
++    def __init__(self, pads, device, sys_clk_freq, cmd_timeout=20e-3, data_timeout=20e-3):
+         use_emulator = hasattr(pads, "cmd_t") and hasattr(pads, "dat_t")
+         self.card_detect = CSRStatus() # Assume SDCard is present if no cd pin.
+         self.comb += self.card_detect.status.eq(getattr(pads, "cd", 0))
+@@ -602,7 +615,7 @@ class SDPHY(Module, AutoCSR):
+         self.submodules.clocker = clocker = SDPHYClocker()
+         self.submodules.init    = init    = SDPHYInit()
+         self.submodules.cmdw    = cmdw    = SDPHYCMDW()
+-        self.submodules.cmdr    = cmdr    = SDPHYCMDR(sys_clk_freq, cmd_timeout, cmdw)
++        self.submodules.cmdr    = cmdr    = SDPHYCMDR(sys_clk_freq, cmd_timeout, cmdw, busy_timeout=cmd_timeout)
+         self.submodules.dataw   = dataw   = SDPHYDATAW()
+         self.submodules.datar   = datar   = SDPHYDATAR(sys_clk_freq, data_timeout)
+ 
