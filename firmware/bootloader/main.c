@@ -1,8 +1,11 @@
-#include <generated/csr.h>
-#include <generated/mem.h>
-#include <irq.h>
 #include <stdint.h>
 #include <stdio.h>
+
+#include <generated/csr.h>
+#include <generated/mem.h>
+#include <generated/soc.h>
+
+#include <irq.h>
 #include <uart.h>
 
 #include "flash.h"
@@ -51,6 +54,8 @@ __attribute__((naked)) int main(int i, char **c) {
     log_printf(
         "Info: built: "__DATE__
         " " __TIME__ "");
+    log_printf(
+        "Info: version: " CONFIG_REPO_GIT_DESC "");
 
     /* Ensure QSPI mode is on */
     spiflash_set_quad_enable();
