@@ -114,11 +114,11 @@ void copy_file_from_ram_to_flash(uint32_t src_addr, uint32_t dst_addr, uint32_t 
 
     uint8_t *data = (uint8_t *)src_addr;
 
-    for (int addr = dst_addr; addr < dst_addr + dst_len; addr += 0x10000) {
+    for (uint32_t addr = dst_addr; addr < dst_addr + dst_len; addr += 0x10000) {
         uint32_t len = addr + 0x10000 > (dst_addr + dst_len) ? (((dst_addr + dst_len) - addr) + 0xFF) & ~0xFF : 0x10000;
         uint32_t flash_address = addr;
 
-        log_printf("Boot: Programming: addr=%08x, len=%08x", addr, len);
+        log_printf("Boot: Programming: addr=%08lx, len=%08lx", addr, len);
 
         /* First block in 64K erase block */
         spiflash_write_enable();
@@ -217,7 +217,7 @@ static uint32_t copy_file_from_sdcard_to_ram(const char *filename, unsigned long
 static void sdcardboot_from_bin(const char *filename) {
     /* Copy Image from SDCard to address */
     uint32_t addr = 0x80000;
-    log_printf("Boot: Loading %s @0x%08x", filename, addr);
+    log_printf("Boot: Loading %s @0x%08lx", filename, addr);
     uint32_t length = copy_file_from_sdcard_to_ram(filename, HYPERRAM_BASE, MAGIC_MAIN);
     if (length == 0)
         return;
@@ -288,7 +288,7 @@ static void sdcardboot_from_json(const char *filename) {
             } else {
                 /* Copy Image from SDCard to address */
                 uint32_t addr = strtoul(json_value, NULL, 0);
-                log_printf("Boot: Loading %s @0x%08x", json_name, addr);
+                log_printf("Boot: Loading %s @0x%08lx", json_name, addr);
                 uint32_t length = copy_file_from_sdcard_to_ram(json_name, HYPERRAM_BASE, (addr == 0) ? MAGIC_BOOT : MAGIC_MAIN);
                 if (length == 0)
                     continue;
