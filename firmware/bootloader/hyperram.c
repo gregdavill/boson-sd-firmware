@@ -67,7 +67,7 @@ int hyperram_init(void) {
     int clk_del = 0;
     int io_del = 0;
 
-    while (clk_del < 128) {
+    while (clk_del < 256) {
         set_clk_delay(clk_del >> 2);
         set_io_delay(io_del);
         int i = 0;

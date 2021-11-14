@@ -67,10 +67,11 @@ __attribute__((naked)) int main(int i, char **c) {
     if (sdphy_card_detect_read() == 1) {
         log_printf("SDCard: No card detected");
     } else {
-
+        busy_wait(300);
+        
         /* init HyperRAM */
         int timeout = 10;
-        while(timeout--)
+        while(--timeout)
         {
             if(hyperram_init() == 0)
                 break;
@@ -85,7 +86,7 @@ __attribute__((naked)) int main(int i, char **c) {
             }
         }
 
-        busy_wait(500);
+        busy_wait(200);
 
         /* Run bootloader logic */
         sdcardboot();
