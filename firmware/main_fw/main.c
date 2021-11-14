@@ -171,6 +171,7 @@ int main(int i, char** c) {
         " fw built: "__DATE__
         " " __TIME__ "");
 
+    log_printf(" fw version: " CONFIG_REPO_GIT_DESC);
     log_printf(" Migen git sha1: " MIGEN_GIT_SHA1);
     log_printf(" LiteX git sha1: " LITEX_GIT_SHA1);
 
@@ -196,6 +197,9 @@ int main(int i, char** c) {
         log_printf("No SD Card inserted, please insert");
         while (sdphy_card_detect_read() == 1) {
         }
+
+        /* Short delay to ensure card is powered up */
+        busy_wait(400);
     }
 
     FATFS_ERR(fr = f_mount(&FatFs, "", 1)); /* Give a work area to the default drive */
@@ -211,73 +215,84 @@ int main(int i, char** c) {
 
 
         FATFS_ERR(fr = scan_folders("DCIM", &dir_cnt));
-        dir_cnt += 1;
-        log_printf("dir_cnt = %u", dir_cnt);
 
-        sprintf(path, "DCIM/BSN%04u", dir_cnt);
-        FATFS_ERR(fr = f_mkdir(path));
-		
+        /* Run for 10 folders */
+        for(int i = 0; i < 10; i++){
+            /* Ensure we start from root FAT cluster */
+            FatFs.sclust = 0;
 
-        DIR Dir = {0};
-        for (unsigned int i = 0; i < 10000; i++) {
-            char name[64] = {0};
-            sprintf(name, "%s/IMG_%04u.RAW", path, i);
+            dir_cnt += 1;
 
-            /* Capture from the Boson Stream */
-            boson_capture_configure();
-            boson_capture_wait();
-
-            /* If we have a cached DIR object, then we only need the relative path */
-            if(FatFs.sclust){
-                sprintf(name, "IMG_%04u.RAW", i);
-            }
-
-            /* Create our file */
-            FATFS_ERR(fr = f_open_ex(&Fil, name, FA_WRITE | FA_CREATE_ALWAYS, &Dir));
-            log_printf("%s", name);
+            sprintf(path, "DCIM/BSN%04u", dir_cnt);
             
-            /* Cache directory object to use as a starting point for the next file. */
-            if(Dir.dptr >= (DWORD)FatFs.csize * 512){
-                log_printf("Info: New Cluster, clearing dptr");
-                Dir.dptr = 0;
-            }
-            FatFs.sclust = Dir.clust;
+            log_printf("Info: Creating dir: [%s]", path);
+            FATFS_ERR(fr = f_mkdir(path));
             
-            DWORD filesize = 640 * 1024;
-            ptr = (void*)HYPERRAM_BASE;
 
-            if (fr == FR_OK) {
+            DIR Dir = {0};
+            for (unsigned int i = 0; i < 10000; i++) {
+                char name[64] = {0};
+                sprintf(name, "%s/IMG_%04u.RAW", path, i);
 
-                FATFS_ERR(fr = f_truncate(&Fil));
-                /* Handle all the FAT changes upfront */
-                FATFS_ERR(fr = f_expand(&Fil, filesize, 1));
+                /* Capture from the Boson Stream */
+                boson_capture_configure();
+                boson_capture_wait();
 
-                if (0) {
-                    /* Basic File writing, will typically write 64 sectors at a time, */
-                    FATFS_ERR(fr = f_write(&Fil, ptr, filesize, &bw));
-                    if (bw != filesize) {
-                        log_printf("Cap: Error: file=%s, (bw=%u)!=(filesize=%lu)\n", name, bw, filesize);
-                        continue;
-                    }
+                log_printf("%s", name);
 
-                } else {
-                    /* Accessing the contiguous file via low-level disk functions */
-                    FIL* fp = &Fil;
-
-                    /* Get physical location of the file data */
-                    UINT drv = fp->obj.fs->pdrv;
-                    LBA_t lba = fp->obj.fs->database + fp->obj.fs->csize * (fp->obj.sclust - 2);
-
-                    /* Write sequential sectors from top of the file at a time */
-                    /* Currently this function can not return an error */
-                    UINT chunk_size = filesize;
-                    for(UINT offset =0; offset < filesize; offset+= chunk_size)
-                        disk_write(drv, ptr + offset, lba + offset/512, chunk_size / 512);
-
-					
+                /* If we have a cached DIR object, then we only need the relative path */
+                if(FatFs.sclust){
+                    sprintf(name, "IMG_%04u.RAW", i);
                 }
 
-                FATFS_ERR(fr = f_close(&Fil));
+                /* Create our file */
+                FATFS_ERR(fr = f_open_ex(&Fil, name, FA_WRITE | FA_CREATE_ALWAYS, &Dir));
+                
+                /* Cache directory object to use as a starting point for the next file. */
+                if(Dir.dptr >= (DWORD)FatFs.csize * 512){
+                    log_printf("Info: New Cluster, clearing dptr");
+                    Dir.dptr = 0;
+                }
+                FatFs.sclust = Dir.clust;
+                
+                DWORD filesize = 640 * 1024;
+                ptr = (void*)HYPERRAM_BASE;
+
+                if (fr == FR_OK) {
+
+                    FATFS_ERR(fr = f_truncate(&Fil));
+                    /* Handle all the FAT changes upfront */
+                    FATFS_ERR(fr = f_expand(&Fil, filesize, 1));
+
+                    if (0) {
+                        /* Basic File writing, will typically write 64 sectors at a time, */
+                        FATFS_ERR(fr = f_write(&Fil, ptr, filesize, &bw));
+                        if (bw != filesize) {
+                            log_printf("Cap: Error: file=%s, (bw=%u)!=(filesize=%lu)\n", name, bw, filesize);
+                            continue;
+                        }
+
+                    } else {
+                        /* Accessing the contiguous file via low-level disk functions */
+                        FIL* fp = &Fil;
+
+                        /* Get physical location of the file data */
+                        UINT drv = fp->obj.fs->pdrv;
+                        LBA_t lba = fp->obj.fs->database + fp->obj.fs->csize * (fp->obj.sclust - 2);
+
+                        /* Write sequential sectors from top of the file at a time */
+                        /* Currently this function can not return an error */
+                        UINT chunk_size = filesize;
+                        for(UINT offset =0; offset < filesize; offset+= chunk_size)
+                            disk_write(drv, ptr + offset, lba + offset/512, chunk_size / 512);
+                            
+                    }
+
+                    FATFS_ERR(fr = f_close(&Fil));
+                }
+
+                /* Reduce frame rate to ~3fps */
+                busy_wait(300);
             }
         }
     }

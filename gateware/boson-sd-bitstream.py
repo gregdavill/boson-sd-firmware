@@ -231,16 +231,12 @@ class Boson_SoC(SoCCore):
         self.submodules.reset = GPIOOut(rst)
         self.comb += platform.request("rst_n").eq(~rst)        
 
-        # Add git version into firmware
-        def get_git_revision():
-            try:
-                r = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"],
-                                            stderr=subprocess.DEVNULL)[:-1].decode("utf-8")
-            except:
-                r = "--------"
-            return r
-
-        self.add_constant("GIT_SHA1", get_git_revision())
+        #Add GIT repo to the firmware
+        git_rev_cmd = subprocess.Popen("git describe --tags --first-parent --always".split(),
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE)
+        (git_stdout, _) = git_rev_cmd.communicate()
+        self.add_constant('CONFIG_REPO_GIT_DESC',git_stdout.decode('ascii').strip('\n'))
 
     # Add SDCard -----------------------------------------------------------------------------------
     def add_sdcard(self, name="sdcard", mode="read+write", use_emulator=False, software_debug=False):
